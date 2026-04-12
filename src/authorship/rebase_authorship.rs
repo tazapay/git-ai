@@ -682,14 +682,17 @@ pub fn rewrite_authorship_after_squash_or_rebase(
     let mut authorship_log = merged_va.to_authorship_log()?;
     authorship_log.metadata.base_commit_sha = merge_commit_sha.to_string();
 
-    // Preserve accumulated totals from source commits (squash/rebase should not drop session totals).
-    let mut summed_totals: HashMap<String, (u32, u32)> = HashMap::new();
+    // Preserve accumulated totals and overriden_lines from source commits.
+    // Squash reconstruction via blame loses overriden_lines because blame attributes
+    // human-edited AI lines to the human, not the AI. We propagate the source values.
+    let mut summed_totals: HashMap<String, (u32, u32, u32)> = HashMap::new();
     for commit_sha in &source_commits {
         if let Ok(log) = get_reference_as_authorship_log_v3(repo, commit_sha) {
             for (prompt_id, record) in log.metadata.prompts {
-                let entry = summed_totals.entry(prompt_id).or_insert((0, 0));
+                let entry = summed_totals.entry(prompt_id).or_insert((0, 0, 0));
                 entry.0 = entry.0.saturating_add(record.total_additions);
                 entry.1 = entry.1.saturating_add(record.total_deletions);
+                entry.2 = entry.2.saturating_add(record.overriden_lines);
             }
             for (hash, record) in log.metadata.humans {
                 authorship_log.metadata.humans.entry(hash).or_insert(record);
@@ -698,17 +701,32 @@ pub fn rewrite_authorship_after_squash_or_rebase(
     }
 
     for (prompt_id, record) in authorship_log.metadata.prompts.iter_mut() {
-        if let Some((additions, deletions)) = summed_totals.get(prompt_id) {
+        if let Some((additions, deletions, overriden)) = summed_totals.get(prompt_id) {
             record.total_additions = *additions;
             record.total_deletions = *deletions;
+            // Use the max of VA-calculated and source notes value.
+            // VA-based detection may find some overrides; source notes carry
+            // overrides that blame can't detect. Take whichever is larger.
+            record.overriden_lines = record.overriden_lines.max(*overriden);
         }
     }
 
-    tracing::debug!(
-        "Created authorship log with {} attestations, {} prompts",
+    // Step 6b: Build per-developer contributors section
+    let contributors = build_contributors(repo, &source_commits);
+    if !contributors.is_empty() {
+        authorship_log.metadata.contributors = Some(contributors);
+    }
+
+    tracing::debug!(&format!(
+        "Created authorship log with {} attestations, {} prompts, contributors={}",
         authorship_log.attestations.len(),
-        authorship_log.metadata.prompts.len()
-    );
+        authorship_log.metadata.prompts.len(),
+        authorship_log
+            .metadata
+            .contributors
+            .as_ref()
+            .map_or(0, |c| c.len()),
+    ));
 
     // Step 7: Save authorship log to git notes
     let authorship_json = authorship_log
@@ -1421,7 +1439,7 @@ pub fn rewrite_authorship_after_rebase_v2(
     // metadata_json_template_parts below).  Attestations will be empty because
     // existing_files is empty, but that's fine — cached_file_attestation_text is also
     // empty and gets rebuilt per-commit.
-    let current_authorship_log = build_authorship_log_from_state(
+    let mut current_authorship_log = build_authorship_log_from_state(
         original_head,
         &current_prompts,
         &initial_humans,
@@ -1689,6 +1707,17 @@ pub fn rewrite_authorship_after_rebase_v2(
                 || delta_humans != prev_delta_humans
             {
                 let active_ids: HashSet<String> = active_prompt_key.keys().cloned().collect();
+                // Build per-commit contributors from the original commit's note + diff
+                if let Some(orig_sha) = current_original_commit {
+                    let contributors = build_contributors(repo, &[orig_sha.to_string()]);
+                    if !contributors.is_empty() {
+                        current_authorship_log.metadata.contributors = Some(contributors);
+                    } else {
+                        current_authorship_log.metadata.contributors = None;
+                    }
+                } else {
+                    current_authorship_log.metadata.contributors = None;
+                }
                 metadata_json_template_parts = build_metadata_template_parts_filtered(
                     &current_authorship_log.metadata,
                     &current_prompts,
@@ -3553,10 +3582,21 @@ fn try_fast_path_rebase_note_remap_cached(
         let Some(raw_note) = note_cache.original_note_contents.get(original_commit) else {
             return Ok(false);
         };
-        remapped_note_entries.push((
-            new_commit.clone(),
-            remap_note_content_for_target_commit(raw_note, new_commit),
-        ));
+        let mut remapped = remap_note_content_for_target_commit(raw_note, new_commit);
+
+        // Inject per-commit contributors into the fast-path remapped note
+        let contributors = build_contributors(repo, std::slice::from_ref(original_commit));
+        if !contributors.is_empty()
+            && let Ok(mut log) =
+                crate::authorship::authorship_log_serialization::AuthorshipLog::deserialize_from_string(&remapped)
+        {
+            log.metadata.contributors = Some(contributors);
+            if let Ok(updated) = log.serialize_to_string() {
+                remapped = updated;
+            }
+        }
+
+        remapped_note_entries.push((new_commit.clone(), remapped));
     }
 
     let remapped_count = remapped_note_entries.len();
@@ -4654,13 +4694,323 @@ fn transform_attributions_to_final_state(
     ))
 }
 
+// ---------------------------------------------------------------------------
+// Contributors: per-developer stats aggregation for squash-merged commits
+// ---------------------------------------------------------------------------
+
+use crate::authorship::authorship_log::ContributorStats;
+
+/// Build per-developer contributor stats from source commits being squash-merged.
+///
+/// Three priority levels per commit:
+/// 1. If the commit already has a `contributors` section (from a previous squash), merge those.
+/// 2. If the commit has notes with prompts, derive AI vs human stats from prompt records + git diff.
+/// 3. If the commit has no notes, all added lines are attributed as manual to the commit author.
+fn build_contributors(
+    repo: &Repository,
+    source_commits: &[String],
+) -> BTreeMap<String, ContributorStats> {
+    let (noreply_normalizer, name_to_email) = build_email_normalizer(repo, source_commits);
+    let mut contributors: HashMap<String, ContributorStats> = HashMap::new();
+
+    for sha in source_commits {
+        // Priority 1: existing contributors from a previous squash level
+        if let Ok(note) = get_reference_as_authorship_log_v3(repo, sha) {
+            if let Some(existing_contributors) = &note.metadata.contributors {
+                for (email, stats) in existing_contributors {
+                    contributors
+                        .entry(email.clone())
+                        .or_default()
+                        .merge_from(stats);
+                }
+                continue;
+            }
+
+            // Priority 2: notes with prompts
+            if !note.metadata.prompts.is_empty() {
+                let commit_author_email = get_commit_author_email(repo, sha);
+                let commit_author_name = get_commit_author_name(repo, sha);
+                let normalized_commit_email =
+                    normalize_email(&commit_author_email, &noreply_normalizer);
+                let git_diff_added_lines = get_commit_diff_added_lines(repo, sha);
+
+                let mut total_ai_accepted: u32 = 0;
+                let mut total_mixed: u32 = 0;
+
+                for prompt in note.metadata.prompts.values() {
+                    let dev_email = resolve_contributor_email(
+                        &prompt.human_author,
+                        &commit_author_email,
+                        &name_to_email,
+                    );
+                    let dev_email = normalize_email(&dev_email, &noreply_normalizer);
+                    let dev_name = parse_name_from_human_author(&prompt.human_author);
+                    let tool_model = format!("{}::{}", prompt.agent_id.tool, prompt.agent_id.model);
+
+                    let c = contributors.entry(dev_email).or_default();
+                    if !dev_name.is_empty() && dev_name != "unknown" {
+                        c.name = dev_name;
+                    }
+
+                    c.ai_accepted += prompt.accepted_lines;
+                    c.mixed_additions += prompt.overriden_lines;
+                    c.ai_additions += prompt.accepted_lines + prompt.overriden_lines;
+                    c.human_additions += prompt.overriden_lines; // mixed counts as human (upstream)
+
+                    let tm = c.tool_model_breakdown.entry(tool_model).or_default();
+                    tm.ai_accepted += prompt.accepted_lines;
+                    tm.mixed_additions += prompt.overriden_lines;
+                    tm.ai_additions += prompt.accepted_lines + prompt.overriden_lines;
+
+                    total_ai_accepted += prompt.accepted_lines;
+                    total_mixed += prompt.overriden_lines;
+                }
+
+                // Manual lines = raw git total - ai_accepted - mixed
+                let manual_for_commit = git_diff_added_lines
+                    .saturating_sub(total_ai_accepted)
+                    .saturating_sub(total_mixed);
+
+                let c = contributors.entry(normalized_commit_email).or_default();
+                if c.name.is_empty() {
+                    c.name = commit_author_name;
+                }
+                c.manual_additions += manual_for_commit;
+                c.human_additions += manual_for_commit;
+
+                continue;
+            }
+        }
+
+        // Priority 3: no notes — all lines are manual
+        let commit_author_email = get_commit_author_email(repo, sha);
+        let commit_author_name = get_commit_author_name(repo, sha);
+        let normalized_commit_email = normalize_email(&commit_author_email, &noreply_normalizer);
+        let git_diff_added_lines = get_commit_diff_added_lines(repo, sha);
+
+        if git_diff_added_lines > 0 {
+            let c = contributors.entry(normalized_commit_email).or_default();
+            if c.name.is_empty() {
+                c.name = commit_author_name;
+            }
+            c.manual_additions += git_diff_added_lines;
+            c.human_additions += git_diff_added_lines;
+        }
+    }
+
+    // Recalculate acceptance rates
+    for stats in contributors.values_mut() {
+        stats.recalculate_acceptance_rates();
+    }
+
+    contributors.into_iter().collect()
+}
+
+/// Get the author email for a commit via `git show`.
+fn get_commit_author_email(repo: &Repository, commit_sha: &str) -> String {
+    let mut args = repo.global_args_for_exec();
+    args.extend_from_slice(&[
+        "show".to_string(),
+        "-s".to_string(),
+        "--no-notes".to_string(),
+        "--format=%ae".to_string(),
+        commit_sha.to_string(),
+    ]);
+    exec_git(&args)
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
+/// Get the author name for a commit via `git show`.
+fn get_commit_author_name(repo: &Repository, commit_sha: &str) -> String {
+    let mut args = repo.global_args_for_exec();
+    args.extend_from_slice(&[
+        "show".to_string(),
+        "-s".to_string(),
+        "--no-notes".to_string(),
+        "--format=%an".to_string(),
+        commit_sha.to_string(),
+    ]);
+    exec_git(&args)
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
+/// Get the number of added lines for a single commit via `git diff --numstat`.
+fn get_commit_diff_added_lines(repo: &Repository, commit_sha: &str) -> u32 {
+    let parent_ref = {
+        let mut args = repo.global_args_for_exec();
+        args.extend_from_slice(&["rev-parse".to_string(), format!("{}^", commit_sha)]);
+        exec_git(&args)
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.trim().to_string())
+            // Empty tree for initial commits
+            .unwrap_or_else(|| "4b825dc642cb6eb9a060e54bf8d69288fbee4904".to_string())
+    };
+
+    let mut args = repo.global_args_for_exec();
+    args.extend_from_slice(&[
+        "diff".to_string(),
+        "--numstat".to_string(),
+        parent_ref,
+        commit_sha.to_string(),
+    ]);
+
+    let output = match exec_git(&args) {
+        Ok(o) => o,
+        Err(_) => return 0,
+    };
+    let stdout = String::from_utf8(output.stdout).unwrap_or_default();
+
+    let mut total = 0u32;
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() >= 2
+            && let Ok(added) = parts[0].parse::<u32>()
+        {
+            total += added;
+        }
+    }
+    total
+}
+
+/// Resolve contributor email from a prompt's `human_author` field.
+///
+/// 1. `"Name <email>"` → extract email from angle brackets
+/// 2. `"Name"` (bare) → look up in name_to_email → else fallback to commit_author_email
+/// 3. `None` → commit_author_email
+fn resolve_contributor_email(
+    human_author: &Option<String>,
+    commit_author_email: &str,
+    name_to_email: &HashMap<String, String>,
+) -> String {
+    if let Some(author) = human_author {
+        if let Some(start) = author.find('<')
+            && let Some(end) = author.find('>')
+            && start < end
+        {
+            return author[start + 1..end].to_string();
+        }
+        let name_lower = author.trim().to_lowercase();
+        if let Some(email) = name_to_email.get(&name_lower) {
+            return email.clone();
+        }
+        return commit_author_email.to_string();
+    }
+    commit_author_email.to_string()
+}
+
+/// Parse the display name from `"Name <email>"` or bare `"Name"`.
+fn parse_name_from_human_author(human_author: &Option<String>) -> String {
+    if let Some(author) = human_author {
+        if let Some(start) = author.find('<') {
+            return author[..start].trim().to_string();
+        }
+        return author.clone();
+    }
+    "unknown".to_string()
+}
+
+/// Extract GitHub username from a noreply email, e.g.
+/// `"12345+alice@users.noreply.github.com"` → `"alice"`.
+fn extract_github_username(email: &str) -> Option<String> {
+    let suffix = "@users.noreply.github.com";
+    if !email.ends_with(suffix) {
+        return None;
+    }
+    let local = &email[..email.len() - suffix.len()];
+    // Format: "12345+username" or just "username"
+    let username = if let Some(pos) = local.find('+') {
+        &local[pos + 1..]
+    } else {
+        local
+    };
+    if username.is_empty() {
+        None
+    } else {
+        Some(username.to_lowercase())
+    }
+}
+
+/// Build email normalization maps by scanning notes and commit metadata across source commits.
+///
+/// Returns `(noreply_normalizer, name_to_email)`:
+/// - `noreply_normalizer`: maps GitHub noreply emails → corporate emails
+/// - `name_to_email`: maps lowercase name → corporate email
+fn build_email_normalizer(
+    repo: &Repository,
+    source_commits: &[String],
+) -> (HashMap<String, String>, HashMap<String, String>) {
+    let mut name_to_email: HashMap<String, String> = HashMap::new();
+    let mut username_to_noreply: HashMap<String, String> = HashMap::new();
+
+    for sha in source_commits {
+        // From notes
+        if let Ok(note) = get_reference_as_authorship_log_v3(repo, sha) {
+            if let Some(existing_contributors) = &note.metadata.contributors {
+                for (email, stats) in existing_contributors {
+                    if email.contains('@') {
+                        name_to_email.insert(stats.name.to_lowercase(), email.clone());
+                    }
+                }
+            }
+            for prompt in note.metadata.prompts.values() {
+                if let Some(ref author) = prompt.human_author
+                    && let Some(start) = author.find('<')
+                    && let Some(end) = author.find('>')
+                    && start < end
+                {
+                    let email = author[start + 1..end].to_string();
+                    let name = author[..start].trim().to_lowercase();
+                    if !name.is_empty() {
+                        name_to_email.insert(name, email);
+                    }
+                }
+            }
+        }
+
+        // From commit metadata
+        let commit_email = get_commit_author_email(repo, sha);
+        let commit_name = get_commit_author_name(repo, sha);
+        if commit_email.contains('@') && !commit_name.is_empty() {
+            name_to_email.insert(commit_name.to_lowercase(), commit_email.clone());
+        }
+        if let Some(username) = extract_github_username(&commit_email) {
+            username_to_noreply.insert(username, commit_email);
+        }
+    }
+
+    let mut noreply_normalizer: HashMap<String, String> = HashMap::new();
+    for (username, noreply_email) in &username_to_noreply {
+        if let Some(real_email) = name_to_email.get(username) {
+            noreply_normalizer.insert(noreply_email.clone(), real_email.clone());
+        }
+    }
+
+    (noreply_normalizer, name_to_email)
+}
+
+/// Normalize an email using the noreply lookup map.
+fn normalize_email(email: &str, normalizer: &HashMap<String, String>) -> String {
+    normalizer
+        .get(email)
+        .cloned()
+        .unwrap_or_else(|| email.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        collect_changed_file_contents_from_diff, get_pathspecs_from_commits,
-        parse_cat_file_batch_output_with_oids, rewrite_authorship_after_cherry_pick,
-        transform_attributions_to_final_state, try_fast_path_rebase_note_remap,
-        walk_commits_to_base,
+        collect_changed_file_contents_from_diff, extract_github_username,
+        get_pathspecs_from_commits, normalize_email, parse_cat_file_batch_output_with_oids,
+        parse_name_from_human_author, resolve_contributor_email,
+        rewrite_authorship_after_cherry_pick, transform_attributions_to_final_state,
+        try_fast_path_rebase_note_remap, walk_commits_to_base,
     };
     use crate::authorship::attribution_tracker::{Attribution, LineAttribution};
     use crate::authorship::authorship_log::{LineRange, PromptRecord};
@@ -6825,5 +7175,195 @@ mod tests {
                 file_att.entries[0].line_ranges
             );
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Contributor helper unit tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_resolve_email_full_format() {
+        let name_to_email = HashMap::new();
+        let result = resolve_contributor_email(
+            &Some("Alice <alice@tazapay.com>".to_string()),
+            "fallback@example.com",
+            &name_to_email,
+        );
+        assert_eq!(result, "alice@tazapay.com");
+    }
+
+    #[test]
+    fn test_resolve_email_bare_name_found() {
+        let mut name_to_email = HashMap::new();
+        name_to_email.insert("alice".to_string(), "alice@tazapay.com".to_string());
+        let result = resolve_contributor_email(
+            &Some("Alice".to_string()),
+            "fallback@example.com",
+            &name_to_email,
+        );
+        assert_eq!(result, "alice@tazapay.com");
+    }
+
+    #[test]
+    fn test_resolve_email_bare_name_not_found() {
+        let name_to_email = HashMap::new();
+        let result = resolve_contributor_email(
+            &Some("Alice".to_string()),
+            "fallback@example.com",
+            &name_to_email,
+        );
+        assert_eq!(result, "fallback@example.com");
+    }
+
+    #[test]
+    fn test_resolve_email_null() {
+        let name_to_email = HashMap::new();
+        let result = resolve_contributor_email(&None, "fallback@example.com", &name_to_email);
+        assert_eq!(result, "fallback@example.com");
+    }
+
+    #[test]
+    fn test_parse_name_from_full_format() {
+        let result = parse_name_from_human_author(&Some("Alice <alice@tazapay.com>".to_string()));
+        assert_eq!(result, "Alice");
+    }
+
+    #[test]
+    fn test_parse_name_bare() {
+        let result = parse_name_from_human_author(&Some("Alice".to_string()));
+        assert_eq!(result, "Alice");
+    }
+
+    #[test]
+    fn test_parse_name_null() {
+        let result = parse_name_from_human_author(&None);
+        assert_eq!(result, "unknown");
+    }
+
+    #[test]
+    fn test_extract_github_username_noreply() {
+        let result = extract_github_username("12345+alicetaza@users.noreply.github.com");
+        assert_eq!(result, Some("alicetaza".to_string()));
+    }
+
+    #[test]
+    fn test_extract_github_username_no_numeric_prefix() {
+        let result = extract_github_username("alicetaza@users.noreply.github.com");
+        assert_eq!(result, Some("alicetaza".to_string()));
+    }
+
+    #[test]
+    fn test_extract_github_username_non_noreply() {
+        let result = extract_github_username("alice@example.com");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_normalize_email_found() {
+        let mut normalizer = HashMap::new();
+        normalizer.insert(
+            "12345+alice@users.noreply.github.com".to_string(),
+            "alice@tazapay.com".to_string(),
+        );
+        let result = normalize_email("12345+alice@users.noreply.github.com", &normalizer);
+        assert_eq!(result, "alice@tazapay.com");
+    }
+
+    #[test]
+    fn test_normalize_email_not_found() {
+        let normalizer = HashMap::new();
+        let result = normalize_email("alice@tazapay.com", &normalizer);
+        assert_eq!(result, "alice@tazapay.com");
+    }
+
+    #[test]
+    fn test_contributor_stats_merge() {
+        use crate::authorship::authorship_log::{ContributorStats, ToolModelContributorStats};
+        use std::collections::BTreeMap;
+
+        let mut a = ContributorStats {
+            name: "Alice".to_string(),
+            human_additions: 10,
+            manual_additions: 8,
+            ai_additions: 5,
+            ai_accepted: 3,
+            mixed_additions: 2,
+            ai_acceptance_rate: 0.0,
+            tool_model_breakdown: BTreeMap::new(),
+        };
+        a.tool_model_breakdown.insert(
+            "claude::opus".to_string(),
+            ToolModelContributorStats {
+                ai_additions: 5,
+                ai_accepted: 3,
+                mixed_additions: 2,
+                ai_acceptance_rate: 0.0,
+            },
+        );
+
+        let mut b = ContributorStats {
+            name: "".to_string(), // empty name, should not overwrite
+            human_additions: 5,
+            manual_additions: 3,
+            ai_additions: 4,
+            ai_accepted: 3,
+            mixed_additions: 1,
+            ai_acceptance_rate: 0.0,
+            tool_model_breakdown: BTreeMap::new(),
+        };
+        b.tool_model_breakdown.insert(
+            "claude::opus".to_string(),
+            ToolModelContributorStats {
+                ai_additions: 4,
+                ai_accepted: 3,
+                mixed_additions: 1,
+                ai_acceptance_rate: 0.0,
+            },
+        );
+
+        a.merge_from(&b);
+        a.recalculate_acceptance_rates();
+
+        assert_eq!(a.name, "Alice"); // not overwritten by empty
+        assert_eq!(a.human_additions, 15);
+        assert_eq!(a.manual_additions, 11);
+        assert_eq!(a.ai_additions, 9);
+        assert_eq!(a.ai_accepted, 6);
+        assert_eq!(a.mixed_additions, 3);
+        // 6/9 * 100 = 66.67
+        assert!((a.ai_acceptance_rate - 66.67).abs() < 0.01);
+
+        let tm = a.tool_model_breakdown.get("claude::opus").unwrap();
+        assert_eq!(tm.ai_additions, 9);
+        assert_eq!(tm.ai_accepted, 6);
+        assert_eq!(tm.mixed_additions, 3);
+        assert!((tm.ai_acceptance_rate - 66.67).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_acceptance_rate_zero_ai() {
+        use crate::authorship::authorship_log::ContributorStats;
+
+        let mut stats = ContributorStats {
+            manual_additions: 10,
+            human_additions: 10,
+            ..Default::default()
+        };
+        stats.recalculate_acceptance_rates();
+        assert_eq!(stats.ai_acceptance_rate, 0.0);
+    }
+
+    #[test]
+    fn test_acceptance_rate_rounding() {
+        use crate::authorship::authorship_log::ContributorStats;
+
+        let mut stats = ContributorStats {
+            ai_accepted: 2,
+            ai_additions: 3,
+            ..Default::default()
+        };
+        stats.recalculate_acceptance_rates();
+        // 2/3 * 100 = 66.666... → rounded to 66.67
+        assert_eq!(stats.ai_acceptance_rate, 66.67);
     }
 }
