@@ -24,4 +24,5 @@ CommitStats {
             time_waiting_for_ai: 0,
         },
     },
+    contributors: None,
 }
