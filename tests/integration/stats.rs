@@ -369,6 +369,7 @@ fn test_markdown_stats_deletion_only() {
         git_diff_deleted_lines: 5,
         git_diff_added_lines: 0,
         tool_model_breakdown: BTreeMap::new(),
+        contributors: None,
     };
 
     let markdown = write_stats_to_markdown(&stats);
@@ -393,6 +394,7 @@ fn test_markdown_stats_all_human() {
         git_diff_deleted_lines: 0,
         git_diff_added_lines: 10,
         tool_model_breakdown: BTreeMap::new(),
+        contributors: None,
     };
 
     let markdown = write_stats_to_markdown(&stats);
@@ -417,6 +419,7 @@ fn test_markdown_stats_all_ai() {
         git_diff_deleted_lines: 0,
         git_diff_added_lines: 15,
         tool_model_breakdown: BTreeMap::new(),
+        contributors: None,
     };
 
     let markdown = write_stats_to_markdown(&stats);
@@ -441,6 +444,7 @@ fn test_markdown_stats_mixed() {
         git_diff_deleted_lines: 5,
         git_diff_added_lines: 30,
         tool_model_breakdown: BTreeMap::new(),
+        contributors: None,
     };
 
     let markdown = write_stats_to_markdown(&stats);
@@ -465,6 +469,7 @@ fn test_markdown_stats_no_mixed() {
         git_diff_deleted_lines: 0,
         git_diff_added_lines: 20,
         tool_model_breakdown: BTreeMap::new(),
+        contributors: None,
     };
 
     let markdown = write_stats_to_markdown(&stats);
@@ -490,6 +495,7 @@ fn test_markdown_stats_minimal_human() {
         git_diff_deleted_lines: 0,
         git_diff_added_lines: 100,
         tool_model_breakdown: BTreeMap::new(),
+        contributors: None,
     };
 
     let markdown = write_stats_to_markdown(&stats);
@@ -527,6 +533,7 @@ fn test_markdown_stats_formatting() {
         git_diff_deleted_lines: 2,
         git_diff_added_lines: 13,
         tool_model_breakdown,
+        contributors: None,
     };
 
     let markdown = write_stats_to_markdown(&stats);
