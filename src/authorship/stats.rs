@@ -1,4 +1,4 @@
-use crate::authorship::authorship_log::LineRange;
+use crate::authorship::authorship_log::{ContributorStats, LineRange};
 use crate::authorship::ignore::{build_ignore_matcher, should_ignore_file_with_matcher};
 use crate::authorship::transcript::Message;
 use crate::error::GitAiError;
@@ -48,6 +48,8 @@ pub struct CommitStats {
     pub git_diff_added_lines: u32,
     #[serde(default)]
     pub tool_model_breakdown: BTreeMap<String, ToolModelHeadlineStats>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contributors: Option<BTreeMap<String, ContributorStats>>,
 }
 
 pub fn stats_command(
@@ -472,6 +474,7 @@ pub fn stats_from_authorship_log(
         tool_model_breakdown: BTreeMap::new(),
         git_diff_deleted_lines,
         git_diff_added_lines,
+        contributors: None,
     };
 
     // Process authorship log if present
@@ -534,6 +537,14 @@ pub fn stats_from_authorship_log(
     commit_stats.unknown_additions = git_diff_added_lines
         .saturating_sub(commit_stats.ai_accepted)
         .saturating_sub(known_human_accepted);
+
+    // Surface contributors from authorship log (if present)
+    if let Some(log) = authorship_log
+        && let Some(ref contributors) = log.metadata.contributors
+        && !contributors.is_empty()
+    {
+        commit_stats.contributors = Some(contributors.clone());
+    }
 
     commit_stats
 }
@@ -788,6 +799,7 @@ mod tests {
             total_ai_additions: 100,
             total_ai_deletions: 0,
             tool_model_breakdown: BTreeMap::new(),
+            contributors: None,
         };
 
         let mixed_output = write_stats_to_terminal(&stats, true);
@@ -806,6 +818,7 @@ mod tests {
             total_ai_additions: 100,
             total_ai_deletions: 0,
             tool_model_breakdown: BTreeMap::new(),
+            contributors: None,
         };
 
         let ai_only_output = write_stats_to_terminal(&ai_stats, true);
@@ -824,6 +837,7 @@ mod tests {
             total_ai_additions: 0,
             total_ai_deletions: 0,
             tool_model_breakdown: BTreeMap::new(),
+            contributors: None,
         };
 
         let human_only_output = write_stats_to_terminal(&human_stats, true);
@@ -842,6 +856,7 @@ mod tests {
             total_ai_additions: 100,
             total_ai_deletions: 0,
             tool_model_breakdown: BTreeMap::new(),
+            contributors: None,
         };
 
         let minimal_human_output = write_stats_to_terminal(&minimal_human_stats, true);
@@ -860,6 +875,7 @@ mod tests {
             total_ai_additions: 0,
             total_ai_deletions: 0,
             tool_model_breakdown: BTreeMap::new(),
+            contributors: None,
         };
 
         let deletion_only_output = write_stats_to_terminal(&deletion_only_stats, true);
@@ -881,6 +897,7 @@ mod tests {
             total_ai_additions: 100,
             total_ai_deletions: 0,
             tool_model_breakdown: BTreeMap::new(),
+            contributors: None,
         };
 
         let mixed_output = write_stats_to_markdown(&stats);
@@ -899,6 +916,7 @@ mod tests {
             total_ai_additions: 100,
             total_ai_deletions: 0,
             tool_model_breakdown: BTreeMap::new(),
+            contributors: None,
         };
 
         let ai_only_output = write_stats_to_markdown(&ai_stats);
@@ -917,6 +935,7 @@ mod tests {
             total_ai_additions: 0,
             total_ai_deletions: 0,
             tool_model_breakdown: BTreeMap::new(),
+            contributors: None,
         };
 
         let human_only_output = write_stats_to_markdown(&human_stats);
@@ -935,6 +954,7 @@ mod tests {
             total_ai_additions: 100,
             total_ai_deletions: 0,
             tool_model_breakdown: BTreeMap::new(),
+            contributors: None,
         };
 
         let minimal_human_output = write_stats_to_markdown(&minimal_human_stats);
@@ -953,6 +973,7 @@ mod tests {
             total_ai_additions: 0,
             total_ai_deletions: 0,
             tool_model_breakdown: BTreeMap::new(),
+            contributors: None,
         };
 
         let deletion_only_output = write_stats_to_markdown(&deletion_only_stats);
@@ -1851,6 +1872,134 @@ mod tests {
         assert_eq!(
             line_range_overlap_len(&LineRange::Range(5, 15), &[1, 3, 10, 12, 20]),
             2
+        );
+    }
+
+    // --- contributors surfacing tests ---
+
+    #[test]
+    fn test_stats_surfaces_contributors_from_authorship_log() {
+        use crate::authorship::authorship_log::{ContributorStats, ToolModelContributorStats};
+
+        let mut log = crate::authorship::authorship_log_serialization::AuthorshipLog::new();
+        let agent_id = crate::authorship::working_log::AgentId {
+            tool: "claude".to_string(),
+            id: "session_1".to_string(),
+            model: "opus".to_string(),
+        };
+        let hash = crate::authorship::authorship_log_serialization::generate_short_hash(
+            &agent_id.id,
+            &agent_id.tool,
+        );
+        log.metadata.prompts.insert(
+            hash,
+            crate::authorship::authorship_log::PromptRecord {
+                agent_id,
+                human_author: Some("Alice <alice@example.com>".to_string()),
+                messages: vec![],
+                total_additions: 10,
+                total_deletions: 0,
+                accepted_lines: 7,
+                overriden_lines: 3,
+                messages_url: None,
+                custom_attributes: None,
+            },
+        );
+
+        let mut contributors = BTreeMap::new();
+        let mut alice_tm = BTreeMap::new();
+        alice_tm.insert(
+            "claude::opus".to_string(),
+            ToolModelContributorStats {
+                ai_additions: 10,
+                ai_accepted: 7,
+                mixed_additions: 3,
+                ai_acceptance_rate: 70.0,
+            },
+        );
+        contributors.insert(
+            "alice@example.com".to_string(),
+            ContributorStats {
+                name: "Alice".to_string(),
+                human_additions: 5,
+                manual_additions: 2,
+                ai_additions: 10,
+                ai_accepted: 7,
+                mixed_additions: 3,
+                ai_acceptance_rate: 70.0,
+                tool_model_breakdown: alice_tm,
+            },
+        );
+        log.metadata.contributors = Some(contributors);
+
+        let stats = stats_from_authorship_log(
+            Some(&log),
+            15, // git_diff_added_lines
+            0,  // git_diff_deleted_lines
+            7,  // ai_accepted
+            5,  // known_human_accepted
+            &BTreeMap::new(),
+        );
+
+        assert!(
+            stats.contributors.is_some(),
+            "contributors should be surfaced"
+        );
+        let c = stats.contributors.unwrap();
+        assert_eq!(c.len(), 1);
+        let alice = c.get("alice@example.com").expect("alice should be present");
+        assert_eq!(alice.name, "Alice");
+        assert_eq!(alice.ai_additions, 10);
+        assert_eq!(alice.ai_accepted, 7);
+        assert_eq!(alice.mixed_additions, 3);
+        assert_eq!(alice.manual_additions, 2);
+        assert!((alice.ai_acceptance_rate - 70.0).abs() < 0.01);
+        assert!(alice.tool_model_breakdown.contains_key("claude::opus"));
+    }
+
+    #[test]
+    fn test_stats_no_contributors_when_absent() {
+        let mut log = crate::authorship::authorship_log_serialization::AuthorshipLog::new();
+        let agent_id = crate::authorship::working_log::AgentId {
+            tool: "cursor".to_string(),
+            id: "session_1".to_string(),
+            model: "gpt-4".to_string(),
+        };
+        let hash = crate::authorship::authorship_log_serialization::generate_short_hash(
+            &agent_id.id,
+            &agent_id.tool,
+        );
+        log.metadata.prompts.insert(
+            hash,
+            crate::authorship::authorship_log::PromptRecord {
+                agent_id,
+                human_author: None,
+                messages: vec![],
+                total_additions: 5,
+                total_deletions: 0,
+                accepted_lines: 5,
+                overriden_lines: 0,
+                messages_url: None,
+                custom_attributes: None,
+            },
+        );
+        // contributors is None (default)
+
+        let stats = stats_from_authorship_log(Some(&log), 10, 0, 5, 3, &BTreeMap::new());
+
+        assert!(
+            stats.contributors.is_none(),
+            "contributors should be None when not in log"
+        );
+    }
+
+    #[test]
+    fn test_stats_no_contributors_when_no_log() {
+        let stats = stats_from_authorship_log(None, 10, 0, 5, 3, &BTreeMap::new());
+
+        assert!(
+            stats.contributors.is_none(),
+            "contributors should be None when no authorship log"
         );
     }
 }
