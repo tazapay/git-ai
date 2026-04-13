@@ -1,0 +1,40 @@
+tests/integration/ci_squash_rebase.rs
+  040978ec286147c1 1792-1994,2014-2015
+src/authorship/rebase_authorship.rs
+  8c2aa277c9dff256 4670-4671
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "6ceba2047fc8b568a37a8ea9099375453c18d30d",
+  "prompts": {
+    "040978ec286147c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "596d5d10-7e81-484f-ac89-f57583bb8004",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Praveen Raj",
+      "messages": [],
+      "total_additions": 205,
+      "total_deletions": 0,
+      "accepted_lines": 205,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/4b131b75023aaa7aa21dd7be3af25cf2eaa92d552fd78ae79767ea03c640f269"
+    },
+    "8c2aa277c9dff256": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e319650f-dea2-4b8c-ba73-64f60d11d131",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Praveen Raj",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 5,
+      "accepted_lines": 2,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/c8ae077cc3dd712f64f8acb1d26fc00d959a75db0d36b98d870c452a005d6c57"
+    }
+  }
+}
