@@ -620,17 +620,14 @@ pub fn rewrite_authorship_after_squash_or_rebase(
             tracing::debug!(
                 "No AI-touched files in merge, but notes exist in source commits; writing empty authorship log",
             );
-            if let Some(mut authorship_log) =
-                build_metadata_only_authorship_log_from_source_notes(
-                    repo,
-                    &source_commits,
-                    merge_commit_sha,
-                )?
-            {
+            if let Some(mut authorship_log) = build_metadata_only_authorship_log_from_source_notes(
+                repo,
+                &source_commits,
+                merge_commit_sha,
+            )? {
                 // Build contributors even when no AI-touched files changed — manual
                 // contributions from source commits should still be tracked.
-                let contributors =
-                    build_contributors(repo, &source_commits, Some(&authorship_log));
+                let contributors = build_contributors(repo, &source_commits, Some(&authorship_log));
                 if !contributors.is_empty() {
                     authorship_log.metadata.contributors = Some(contributors);
                 }
