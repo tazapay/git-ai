@@ -620,19 +620,41 @@ pub fn rewrite_authorship_after_squash_or_rebase(
             tracing::debug!(
                 "No AI-touched files in merge, but notes exist in source commits; writing empty authorship log",
             );
-            if let Some(authorship_log) = build_metadata_only_authorship_log_from_source_notes(
-                repo,
-                &source_commits,
-                merge_commit_sha,
-            )? {
+            if let Some(mut authorship_log) =
+                build_metadata_only_authorship_log_from_source_notes(
+                    repo,
+                    &source_commits,
+                    merge_commit_sha,
+                )?
+            {
+                // Build contributors even when no AI-touched files changed — manual
+                // contributions from source commits should still be tracked.
+                let contributors =
+                    build_contributors(repo, &source_commits, Some(&authorship_log));
+                if !contributors.is_empty() {
+                    authorship_log.metadata.contributors = Some(contributors);
+                }
                 let authorship_json = authorship_log.serialize_to_string().map_err(|_| {
                     GitAiError::Generic("Failed to serialize authorship log".to_string())
                 })?;
                 crate::git::refs::notes_add(repo, merge_commit_sha, &authorship_json)?;
             }
         } else {
-            // No files changed, nothing to do
-            tracing::debug!("No files changed in merge, skipping authorship rewrite");
+            // No authorship notes in source commits. Still build contributors
+            // to capture manual-only contributions from developers.
+            let contributors = build_contributors(repo, &source_commits, None);
+            if !contributors.is_empty() {
+                tracing::debug!("No AI notes but building contributors for manual contributions");
+                let mut authorship_log = AuthorshipLog::new();
+                authorship_log.metadata.base_commit_sha = merge_commit_sha.to_string();
+                authorship_log.metadata.contributors = Some(contributors);
+                let authorship_json = authorship_log.serialize_to_string().map_err(|_| {
+                    GitAiError::Generic("Failed to serialize authorship log".to_string())
+                })?;
+                crate::git::refs::notes_add(repo, merge_commit_sha, &authorship_json)?;
+            } else {
+                tracing::debug!("No files changed in merge, skipping authorship rewrite");
+            }
         }
         return Ok(());
     }
@@ -685,14 +707,22 @@ pub fn rewrite_authorship_after_squash_or_rebase(
     // Preserve accumulated totals and overriden_lines from source commits.
     // Squash reconstruction via blame loses overriden_lines because blame attributes
     // human-edited AI lines to the human, not the AI. We propagate the source values.
+    // Also collect full prompt records so we can add any that VA failed to load
+    // (discover_and_load_foreign_prompts silently swallows errors).
     let mut summed_totals: HashMap<String, (u32, u32, u32)> = HashMap::new();
+    let mut source_prompt_records: HashMap<
+        String,
+        crate::authorship::authorship_log::PromptRecord,
+    > = HashMap::new();
     for commit_sha in &source_commits {
         if let Ok(log) = get_reference_as_authorship_log_v3(repo, commit_sha) {
             for (prompt_id, record) in log.metadata.prompts {
-                let entry = summed_totals.entry(prompt_id).or_insert((0, 0, 0));
+                let entry = summed_totals.entry(prompt_id.clone()).or_insert((0, 0, 0));
                 entry.0 = entry.0.saturating_add(record.total_additions);
                 entry.1 = entry.1.saturating_add(record.total_deletions);
                 entry.2 = entry.2.saturating_add(record.overriden_lines);
+                // Keep first-seen full record for prompts VA may have missed
+                source_prompt_records.entry(prompt_id).or_insert(record);
             }
             for (hash, record) in log.metadata.humans {
                 authorship_log.metadata.humans.entry(hash).or_insert(record);
@@ -708,6 +738,20 @@ pub fn rewrite_authorship_after_squash_or_rebase(
             // VA-based detection may find some overrides; source notes carry
             // overrides that blame can't detect. Take whichever is larger.
             record.overriden_lines = record.overriden_lines.max(*overriden);
+        }
+    }
+
+    // Add prompts from source commits that VA failed to load.
+    // discover_and_load_foreign_prompts can fail silently (grep miss, timing),
+    // leaving attestations that reference prompt IDs not in the metadata.
+    for (prompt_id, mut record) in source_prompt_records {
+        if !authorship_log.metadata.prompts.contains_key(&prompt_id) {
+            if let Some((additions, deletions, overriden)) = summed_totals.get(&prompt_id) {
+                record.total_additions = *additions;
+                record.total_deletions = *deletions;
+                record.overriden_lines = *overriden;
+            }
+            authorship_log.metadata.prompts.insert(prompt_id, record);
         }
     }
 
@@ -4720,6 +4764,19 @@ fn build_contributors_from_merged_log(
         return BTreeMap::new();
     }
 
+    // Collect prompt IDs that originate from source commits (this PR's changes).
+    // The merged_log may also contain prompts from the base branch (boundary entries
+    // in blame). Those must be excluded to prevent double-counting when this squash
+    // commit is later merged upstream via Priority 1.
+    let source_prompt_ids: HashSet<String> = source_commits
+        .iter()
+        .filter_map(|sha| get_reference_as_authorship_log_v3(repo, sha).ok())
+        .flat_map(|log| log.metadata.prompts.into_keys())
+        .collect();
+    // Only filter when source notes are available; if notes push failed,
+    // fall back to using all merged_log prompts (VA-loaded) rather than nothing.
+    let filter_to_source = !source_prompt_ids.is_empty();
+
     // Get the commit author for fallback email resolution.
     // Use the last source commit as the representative author.
     let representative_sha = source_commits.last().map(String::as_str).unwrap_or("");
@@ -4736,7 +4793,11 @@ fn build_contributors_from_merged_log(
     let mut total_ai_accepted: u32 = 0;
     let mut total_mixed: u32 = 0;
 
-    for prompt in merged_log.metadata.prompts.values() {
+    for (prompt_id, prompt) in &merged_log.metadata.prompts {
+        // Skip base-branch prompts to prevent double-counting.
+        if filter_to_source && !source_prompt_ids.contains(prompt_id) {
+            continue;
+        }
         let dev_email =
             resolve_contributor_email(&prompt.human_author, &commit_author_email, name_to_email);
         let dev_email = normalize_email(&dev_email, noreply_normalizer);
@@ -4819,13 +4880,19 @@ fn build_contributors(
     if let Some(merged_log) = merged_log
         && !any_source_has_contributors
     {
-        return build_contributors_from_merged_log(
+        let result = build_contributors_from_merged_log(
             repo,
             source_commits,
             merged_log,
             &noreply_normalizer,
             &name_to_email,
         );
+        if !result.is_empty() {
+            return result;
+        }
+        // Fall through to per-source-commit logic (Priority 2/3) when merged log
+        // has no prompts from source commits — e.g. manual-only contributions or
+        // notes unavailable in CI.
     }
     let mut contributors: HashMap<String, ContributorStats> = HashMap::new();
 
