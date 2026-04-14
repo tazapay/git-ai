@@ -350,7 +350,10 @@ fn test_ci_squash_merge_no_notes_no_authorship_created() {
             );
             if let Some(ref contributors) = log.metadata.contributors {
                 let total_ai: u32 = contributors.values().map(|c| c.ai_accepted).sum();
-                assert_eq!(total_ai, 0, "Manual-only merge should have zero ai_accepted");
+                assert_eq!(
+                    total_ai, 0,
+                    "Manual-only merge should have zero ai_accepted"
+                );
             }
         }
         Err(_) => {
@@ -1823,8 +1826,12 @@ fn test_ci_squash_merge_contributors_ai_accepted_matches_top_level() {
     repo.git(&["checkout", "-b", "feature"]).unwrap();
 
     // Commit 1: AI adds 2 lines
-    file.insert_at(1, crate::lines!["  connect() {}".ai(), "  disconnect() {}".ai()]);
-    repo.stage_all_and_commit("AI adds connect/disconnect").unwrap();
+    file.insert_at(
+        1,
+        crate::lines!["  connect() {}".ai(), "  disconnect() {}".ai()],
+    );
+    repo.stage_all_and_commit("AI adds connect/disconnect")
+        .unwrap();
 
     // Commit 2: AI adds 1 more line (different prompt session)
     file.insert_at(3, crate::lines!["  ping() {}".ai()]);
@@ -1872,20 +1879,16 @@ fn test_ci_squash_merge_contributors_ai_accepted_matches_top_level() {
     // KEY ASSERTION: contributors ai_accepted must match the top-level value exactly
     let contributors_total_ai_accepted: u32 = contributors.values().map(|c| c.ai_accepted).sum();
     assert_eq!(
-        contributors_total_ai_accepted,
-        top_level.ai_accepted,
+        contributors_total_ai_accepted, top_level.ai_accepted,
         "contributors.ai_accepted ({}) must match top-level ai_accepted ({})",
-        contributors_total_ai_accepted,
-        top_level.ai_accepted,
+        contributors_total_ai_accepted, top_level.ai_accepted,
     );
 
     let contributors_total_ai_additions: u32 = contributors.values().map(|c| c.ai_additions).sum();
     assert_eq!(
-        contributors_total_ai_additions,
-        top_level.ai_additions,
+        contributors_total_ai_additions, top_level.ai_additions,
         "contributors.ai_additions ({}) must match top-level ai_additions ({})",
-        contributors_total_ai_additions,
-        top_level.ai_additions,
+        contributors_total_ai_additions, top_level.ai_additions,
     );
 }
 
@@ -1965,14 +1968,17 @@ fn test_ci_squash_merge_second_level_merges_existing_contributors() {
         .unwrap()
         .trim()
         .to_string();
-    repo.git(&["checkout", "-b", "main2", &initial_sha]).unwrap();
+    repo.git(&["checkout", "-b", "main2", &initial_sha])
+        .unwrap();
 
     file.set_contents(crate::lines![
         "export const app = {};",
         "export function init() {}",
         "export function run() {}",
     ]);
-    let main_merge = repo.stage_all_and_commit("Squash feature onto main").unwrap();
+    let main_merge = repo
+        .stage_all_and_commit("Squash feature onto main")
+        .unwrap();
     let main_merge_sha = main_merge.commit_sha;
 
     rewrite_authorship_after_squash_or_rebase(
@@ -1999,11 +2005,9 @@ fn test_ci_squash_merge_second_level_merges_existing_contributors() {
         .map(|c| c.ai_accepted)
         .sum();
     assert_eq!(
-        second_level_ai_accepted,
-        first_level_ai_accepted,
+        second_level_ai_accepted, first_level_ai_accepted,
         "Second-level squash contributors.ai_accepted ({}) should equal first-level ({}): Priority 1 merge should propagate contributors unchanged",
-        second_level_ai_accepted,
-        first_level_ai_accepted,
+        second_level_ai_accepted, first_level_ai_accepted,
     );
 }
 
@@ -2025,7 +2029,8 @@ fn test_ci_squash_merge_manual_only_populates_contributors() {
     // Task branch with ONLY manual commits (no .ai() markers)
     repo.git(&["checkout", "-b", "task-manual"]).unwrap();
     file.insert_at(1, crate::lines!["  name = 'widget';", "  count = 0;"]);
-    repo.stage_all_and_commit("Manual: add name and count").unwrap();
+    repo.stage_all_and_commit("Manual: add name and count")
+        .unwrap();
     file.insert_at(3, crate::lines!["  label = 'default';"]);
     let task_tip = repo.stage_all_and_commit("Manual: add label").unwrap();
     let task_sha = task_tip.commit_sha;
@@ -2047,7 +2052,12 @@ fn test_ci_squash_merge_manual_only_populates_contributors() {
         .expect("Failed to find repository");
 
     rewrite_authorship_after_squash_or_rebase(
-        &git_ai_repo, "task-manual", "main", &task_sha, &merge_sha, false,
+        &git_ai_repo,
+        "task-manual",
+        "main",
+        &task_sha,
+        &merge_sha,
+        false,
     )
     .unwrap();
 
@@ -2069,7 +2079,10 @@ fn test_ci_squash_merge_manual_only_populates_contributors() {
         "Manual-only squash should have manual_additions > 0. Got: {:?}",
         contributors
     );
-    assert_eq!(total_ai, 0, "Manual-only squash should have zero ai_accepted");
+    assert_eq!(
+        total_ai, 0,
+        "Manual-only squash should have zero ai_accepted"
+    );
 }
 
 /// Test that when feat already has Alice's AI squash commit, Bob's squash into feat
@@ -2102,7 +2115,12 @@ fn test_ci_squash_merge_no_base_branch_prompt_leakage() {
         .expect("Failed to find repository");
 
     rewrite_authorship_after_squash_or_rebase(
-        &git_ai_repo, "task-alice", "feat", &alice_sha, &feat_squash_sha, false,
+        &git_ai_repo,
+        "task-alice",
+        "feat",
+        &alice_sha,
+        &feat_squash_sha,
+        false,
     )
     .unwrap();
 
@@ -2136,7 +2154,12 @@ fn test_ci_squash_merge_no_base_branch_prompt_leakage() {
     let bob_squash_sha = bob_squash.commit_sha;
 
     rewrite_authorship_after_squash_or_rebase(
-        &git_ai_repo, "task-bob", "feat", &bob_sha, &bob_squash_sha, false,
+        &git_ai_repo,
+        "task-bob",
+        "feat",
+        &bob_sha,
+        &bob_squash_sha,
+        false,
     )
     .unwrap();
 
@@ -2225,12 +2248,18 @@ fn test_ci_squash_merge_second_level_mixed_ai_and_manual_contributors() {
     // --- Bob's task: manual-only commits ---
     repo.git(&["checkout", "-b", "task-bob"]).unwrap();
     let mut file_b = repo.filename("bob_manual.ts");
-    file_b.set_contents(crate::lines!["function manual1() {}", "function manual2() {}"]);
+    file_b.set_contents(crate::lines![
+        "function manual1() {}",
+        "function manual2() {}"
+    ]);
     let bob_tip = repo.stage_all_and_commit("Bob manual").unwrap();
 
     // Squash Bob → feat
     repo.git(&["checkout", "feat"]).unwrap();
-    file_b.set_contents(crate::lines!["function manual1() {}", "function manual2() {}"]);
+    file_b.set_contents(crate::lines![
+        "function manual1() {}",
+        "function manual2() {}"
+    ]);
     let bob_squash = repo.stage_all_and_commit("Squash Bob").unwrap();
 
     rewrite_authorship_after_squash_or_rebase(
@@ -2255,7 +2284,10 @@ fn test_ci_squash_merge_second_level_mixed_ai_and_manual_contributors() {
         "export const app = {};",
         "export function aiInit() {}",
     ]);
-    file_b.set_contents(crate::lines!["function manual1() {}", "function manual2() {}"]);
+    file_b.set_contents(crate::lines![
+        "function manual1() {}",
+        "function manual2() {}"
+    ]);
     let main_squash = repo.stage_all_and_commit("Squash feat onto main").unwrap();
 
     rewrite_authorship_after_squash_or_rebase(
@@ -2324,13 +2356,16 @@ fn test_ci_squash_merge_with_merge_commit_in_source() {
     // --- Meanwhile, Alice's work lands on feat (simulated) ---
     repo.git(&["checkout", "feat"]).unwrap();
     let mut file_alice = repo.filename("alice.ts");
-    file_alice.set_contents(crate::lines!["// alice code", "function aliceWork() {}".ai()]);
+    file_alice.set_contents(crate::lines![
+        "// alice code",
+        "function aliceWork() {}".ai()
+    ]);
     let alice_on_feat = repo.stage_all_and_commit("Alice squash on feat").unwrap();
 
     // Create AI notes on Alice's feat commit (simulate CI having run)
     rewrite_authorship_after_squash_or_rebase(
         &GitAiRepository::find_repository_in_path(repo.path().to_str().unwrap()).unwrap(),
-        "task-bob",      // doesn't matter for this, we just need notes on feat
+        "task-bob", // doesn't matter for this, we just need notes on feat
         "feat",
         &bob_commit.commit_sha, // won't actually be used since we're creating notes manually
         &alice_on_feat.commit_sha,
@@ -2362,7 +2397,7 @@ fn test_ci_squash_merge_with_merge_commit_in_source() {
         &git_ai_repo,
         "task-bob",
         "feat",
-        &merge_head,           // source_head = merge commit (includes git merge feat)
+        &merge_head, // source_head = merge commit (includes git merge feat)
         &bob_squash.commit_sha,
         false,
     )
@@ -2378,10 +2413,7 @@ fn test_ci_squash_merge_with_merge_commit_in_source() {
         squash_log.metadata
     );
     let contributors = squash_log.metadata.contributors.unwrap();
-    assert!(
-        !contributors.is_empty(),
-        "Contributors should not be empty"
-    );
+    assert!(!contributors.is_empty(), "Contributors should not be empty");
 
     // Bob should have AI stats (from bob.ts AI line)
     let total_ai: u32 = contributors.values().map(|c| c.ai_accepted).sum();
@@ -2598,18 +2630,15 @@ fn test_ci_squash_four_commits_all_change_types() {
 
     // Commit 3: human overrides the AI "aiTemp" line
     file.replace_at(4, "const aiOverridden = 2;");
-    repo.stage_all_and_commit("Human overrides AI line").unwrap();
+    repo.stage_all_and_commit("Human overrides AI line")
+        .unwrap();
 
     // Commit 4: different AI (prompt B) adds a line
     file.insert_at(5, crate::lines!["const diffAi = 1;".ai()]);
     let commit4 = repo.stage_all_and_commit("Different AI adds line").unwrap();
     let commit4_sha = commit4.commit_sha.clone();
 
-    let feature_sha = repo
-        .git(&["rev-parse", "HEAD"])
-        .unwrap()
-        .trim()
-        .to_string();
+    let feature_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
 
     // Capture prompt IDs from source commits
     let git_ai_repo = GitAiRepository::find_repository_in_path(repo.path().to_str().unwrap())
@@ -2688,10 +2717,7 @@ fn test_ci_squash_four_commits_all_change_types() {
     );
 
     // --- Contributor assertions ---
-    let c = log
-        .metadata
-        .contributors
-        .expect("Should have contributors");
+    let c = log.metadata.contributors.expect("Should have contributors");
     let ai_accepted: u32 = c.values().map(|s| s.ai_accepted).sum();
     let manual: u32 = c.values().map(|s| s.manual_additions).sum();
 
@@ -2744,7 +2770,9 @@ fn test_ci_squash_single_commit_all_change_types() {
         "const b = 2;",
         "const c = 3;"
     ]);
-    let feature_commit = repo.stage_all_and_commit("All changes in one commit").unwrap();
+    let feature_commit = repo
+        .stage_all_and_commit("All changes in one commit")
+        .unwrap();
     let feature_sha = feature_commit.commit_sha.clone();
 
     let git_ai_repo = GitAiRepository::find_repository_in_path(repo.path().to_str().unwrap())
@@ -2797,14 +2825,12 @@ fn test_ci_squash_single_commit_all_change_types() {
     assert!(
         p.accepted_lines >= 2,
         "Single-commit prompt should have >= 2 accepted lines (aiKept + diffAi). Got accepted={}, total_add={}",
-        p.accepted_lines, p.total_additions
+        p.accepted_lines,
+        p.total_additions
     );
 
     // --- Contributor assertions ---
-    let c = log
-        .metadata
-        .contributors
-        .expect("Should have contributors");
+    let c = log.metadata.contributors.expect("Should have contributors");
     let ai_accepted: u32 = c.values().map(|s| s.ai_accepted).sum();
     let manual: u32 = c.values().map(|s| s.manual_additions).sum();
 
@@ -2847,10 +2873,10 @@ fn test_ci_squash_two_tasks_merge_then_feature_to_main() {
     file_a.set_contents(crate::lines![
         "// task1",
         "const a = 1;",
-        "const t1Manual = true;",     // change 1: manual
-        "const t1AiKept = 1;".ai(),   // change 2: AI kept
-        "const t1Override = 1;",       // change 3: was AI, human overrode
-        "const t1DiffAi = 1;".ai(),   // change 4: different AI (same prompt)
+        "const t1Manual = true;",   // change 1: manual
+        "const t1AiKept = 1;".ai(), // change 2: AI kept
+        "const t1Override = 1;",    // change 3: was AI, human overrode
+        "const t1DiffAi = 1;".ai(), // change 4: different AI (same prompt)
         "const b = 2;"
     ]);
     let task1_tip = repo.stage_all_and_commit("Task-1 changes").unwrap();
@@ -2901,7 +2927,8 @@ fn test_ci_squash_two_tasks_merge_then_feature_to_main() {
         assert!(
             p.accepted_lines >= 2,
             "Task-1 prompt accepted_lines should be >= 2. Got accepted={}, total_add={}",
-            p.accepted_lines, p.total_additions
+            p.accepted_lines,
+            p.total_additions
         );
     }
     let c1 = log1
@@ -2936,28 +2963,23 @@ fn test_ci_squash_two_tasks_merge_then_feature_to_main() {
     file_b.set_contents(crate::lines![
         "// task2",
         "const c = 1;",
-        "const t2Manual = true;",     // change 1: manual
-        "const t2AiKept = 1;".ai(),   // change 2: AI kept
-        "const t2Override = 1;",       // change 3: was AI, human overrode
-        "const t2DiffAi = 1;".ai(),   // change 4: different AI (same prompt)
+        "const t2Manual = true;",   // change 1: manual
+        "const t2AiKept = 1;".ai(), // change 2: AI kept
+        "const t2Override = 1;",    // change 3: was AI, human overrode
+        "const t2DiffAi = 1;".ai(), // change 4: different AI (same prompt)
         "const d = 2;"
     ]);
     let task2_commit = repo.stage_all_and_commit("Task-2 changes").unwrap();
 
     // Capture task-2 prompt
-    let t2_log =
-        get_reference_as_authorship_log_v3(&git_ai_repo, &task2_commit.commit_sha)
-            .expect("Task-2 should have log");
+    let t2_log = get_reference_as_authorship_log_v3(&git_ai_repo, &task2_commit.commit_sha)
+        .expect("Task-2 should have log");
     let prompt_t2 = t2_log.metadata.prompts.keys().next().cloned();
 
     // Merge feat into task-2 (pulls in task-1 squash)
     repo.git(&["merge", "feat", "-m", "Merge feat into task-2"])
         .unwrap();
-    let merge_head = repo
-        .git(&["rev-parse", "HEAD"])
-        .unwrap()
-        .trim()
-        .to_string();
+    let merge_head = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
 
     // Squash task-2 → feat
     repo.git(&["checkout", "feat"]).unwrap();
@@ -2996,7 +3018,8 @@ fn test_ci_squash_two_tasks_merge_then_feature_to_main() {
         assert!(
             p.accepted_lines >= 2,
             "Task-2 prompt accepted_lines should be >= 2. Got accepted={}, total_add={}",
-            p.accepted_lines, p.total_additions
+            p.accepted_lines,
+            p.total_additions
         );
     }
     let c2 = log2
@@ -3055,9 +3078,7 @@ fn test_ci_squash_two_tasks_merge_then_feature_to_main() {
         "const t2DiffAi = 1;",
         "const d = 2;"
     ]);
-    let main_merge = repo
-        .stage_all_and_commit("Squash feat onto main")
-        .unwrap();
+    let main_merge = repo.stage_all_and_commit("Squash feat onto main").unwrap();
     let main_sha = main_merge.commit_sha;
 
     let feat_tip = squash2_sha; // feat HEAD = latest squash
@@ -3084,12 +3105,14 @@ fn test_ci_squash_two_tasks_merge_then_feature_to_main() {
     assert!(
         main_ai >= 4,
         "Main ai_accepted should be >= 4 (2 from task-1 + 2 from task-2). Got {}. contributors={:?}",
-        main_ai, mc
+        main_ai,
+        mc
     );
     assert!(
         main_manual >= 2,
         "Main manual_additions should be >= 2 (1 from each task). Got {}. contributors={:?}",
-        main_manual, mc
+        main_manual,
+        mc
     );
 }
 
@@ -3138,11 +3161,7 @@ fn test_ci_squash_same_prompt_across_commits_accepted_and_overridden() {
     let commit4 = repo.stage_all_and_commit("Different AI adds line").unwrap();
     let commit4_sha = commit4.commit_sha.clone();
 
-    let task_sha = repo
-        .git(&["rev-parse", "HEAD"])
-        .unwrap()
-        .trim()
-        .to_string();
+    let task_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
 
     let git_ai_repo = GitAiRepository::find_repository_in_path(repo.path().to_str().unwrap())
         .expect("Failed to find repository");
@@ -3268,10 +3287,7 @@ fn test_ci_squash_same_prompt_across_commits_accepted_and_overridden() {
     );
 
     // --- Contributor assertions ---
-    let c = log
-        .metadata
-        .contributors
-        .expect("Should have contributors");
+    let c = log.metadata.contributors.expect("Should have contributors");
     let ai_accepted: u32 = c.values().map(|s| s.ai_accepted).sum();
     let ai_additions: u32 = c.values().map(|s| s.ai_additions).sum();
     let mixed: u32 = c.values().map(|s| s.mixed_additions).sum();
