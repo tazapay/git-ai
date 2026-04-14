@@ -1,0 +1,26 @@
+tests/integration/ci_squash_rebase.rs
+  29694523ff39c8ec 2565-3095,3123-3125
+src/authorship/rebase_authorship.rs
+  29694523ff39c8ec 731-750
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "6305352501c72f02ba850007761c85373b1e67e4",
+  "prompts": {
+    "29694523ff39c8ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "912efdb3-b16e-4a22-93e6-3697a5f0969b",
+        "model": "<synthetic>"
+      },
+      "human_author": "Praveen Raj",
+      "messages": [],
+      "total_additions": 727,
+      "total_deletions": 166,
+      "accepted_lines": 554,
+      "overriden_lines": 6,
+      "messages_url": "https://usegitai.com/cas/4a03f1b399d221d7ea7d2f15e251494281dfcb4cd0fdaedaf4524c2c3ae1b436"
+    }
+  }
+}
