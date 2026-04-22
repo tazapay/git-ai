@@ -696,6 +696,7 @@ mod tests {
             git_diff_deleted_lines: 0,
             git_diff_added_lines: 1000,
             tool_model_breakdown: BTreeMap::new(),
+            contributors: None,
         };
         let with_untracked_output = write_stats_to_terminal(&untracked_stats, false);
         assert_debug_snapshot!(with_untracked_output);
@@ -709,6 +710,7 @@ mod tests {
             git_diff_deleted_lines: 0,
             git_diff_added_lines: 100,
             tool_model_breakdown: BTreeMap::new(),
+            contributors: None,
         };
         let untracked_at_threshold_output = write_stats_to_terminal(&threshold_stats, false);
         assert_debug_snapshot!(untracked_at_threshold_output);
@@ -722,6 +724,7 @@ mod tests {
             git_diff_deleted_lines: 0,
             git_diff_added_lines: 99,
             tool_model_breakdown: BTreeMap::new(),
+            contributors: None,
         };
         let untracked_just_above_output = write_stats_to_terminal(&above_threshold_stats, false);
         assert_debug_snapshot!(untracked_just_above_output);
@@ -735,6 +738,7 @@ mod tests {
             git_diff_deleted_lines: 0,
             git_diff_added_lines: 100,
             tool_model_breakdown: BTreeMap::new(),
+            contributors: None,
         };
         let all_untracked_output = write_stats_to_terminal(&all_untracked_stats, false);
         assert_debug_snapshot!(all_untracked_output);
@@ -1778,6 +1782,7 @@ mod tests {
                 ai_accepted: 7,
                 mixed_additions: 3,
                 ai_acceptance_rate: 70.0,
+                ai_contribution_rate: 58.33, // 7 / (7 + 5) * 100
                 tool_model_breakdown: alice_tm,
             },
         );
@@ -1805,6 +1810,8 @@ mod tests {
         assert_eq!(alice.mixed_additions, 3);
         assert_eq!(alice.manual_additions, 2);
         assert!((alice.ai_acceptance_rate - 70.0).abs() < 0.01);
+        // 7 / (7 + 5) * 100 = 58.33
+        assert!((alice.ai_contribution_rate - 58.33).abs() < 0.01);
         assert!(alice.tool_model_breakdown.contains_key("claude::opus"));
     }
 

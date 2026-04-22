@@ -95,7 +95,9 @@ fn test_ci_local_merge_skip_fetch_base_allows_local_only_base_ref() {
         .expect("expected local ci to succeed when --skip-fetch-base is set");
 
     assert!(output.contains("Skipping base branch fetch for"));
-    assert!(output.contains("Local CI (merge): no AI authorship to track"));
+    // Contributors-only authorship notes are now written for manual merges too,
+    // so the result is authorship rewritten (not "no AI authorship").
+    assert!(output.contains("Local CI (merge): authorship rewritten successfully"));
 }
 
 #[test]
