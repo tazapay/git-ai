@@ -178,21 +178,15 @@ fn handle_config_key_event(
                             config.title.insert(config.title_cursor, c);
                             config.title_cursor += 1;
                         }
-                        KeyCode::Backspace => {
-                            if config.title_cursor > 0 {
-                                config.title.remove(config.title_cursor - 1);
-                                config.title_cursor -= 1;
-                            }
+                        KeyCode::Backspace if config.title_cursor > 0 => {
+                            config.title.remove(config.title_cursor - 1);
+                            config.title_cursor -= 1;
                         }
-                        KeyCode::Left => {
-                            if config.title_cursor > 0 {
-                                config.title_cursor -= 1;
-                            }
+                        KeyCode::Left if config.title_cursor > 0 => {
+                            config.title_cursor -= 1;
                         }
-                        KeyCode::Right => {
-                            if config.title_cursor < config.title.len() {
-                                config.title_cursor += 1;
-                            }
+                        KeyCode::Right if config.title_cursor < config.title.len() => {
+                            config.title_cursor += 1;
                         }
                         KeyCode::Home => {
                             config.title_cursor = 0;
@@ -206,26 +200,26 @@ fn handle_config_key_event(
                 1 => {
                     // Checkbox section
                     match key.code {
-                        KeyCode::Up | KeyCode::Char('k') => {
+                        KeyCode::Up | KeyCode::Char('k')
                             // Move focus up between checkboxes
-                            if config.focused_checkbox > 0 {
-                                config.focused_checkbox -= 1;
-                            }
+                            if config.focused_checkbox > 0 =>
+                        {
+                            config.focused_checkbox -= 1;
                         }
-                        KeyCode::Down | KeyCode::Char('j') => {
+                        KeyCode::Down | KeyCode::Char('j')
                             // Move focus down between checkboxes
-                            if config.focused_checkbox < 1 {
-                                config.focused_checkbox += 1;
-                            }
+                            if config.focused_checkbox < 1 =>
+                        {
+                            config.focused_checkbox += 1;
                         }
                         KeyCode::Char(' ') => {
                             // Toggle focused checkbox
                             match config.focused_checkbox {
-                                0 => {
+                                0
                                     // Share all in commit - only toggle if can_share_commit
-                                    if config.can_share_commit {
-                                        config.share_all_in_commit = !config.share_all_in_commit;
-                                    }
+                                    if config.can_share_commit =>
+                                {
+                                    config.share_all_in_commit = !config.share_all_in_commit;
                                 }
                                 1 => {
                                     // Include diffs - always toggleable

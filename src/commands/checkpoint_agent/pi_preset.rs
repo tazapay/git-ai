@@ -413,13 +413,11 @@ impl PiPreset {
         timestamp: Option<String>,
     ) {
         match content {
-            Some(Value::String(text)) => {
-                if !text.trim().is_empty() {
-                    transcript.add_message(Message::User {
-                        text: text.to_string(),
-                        timestamp,
-                    });
-                }
+            Some(Value::String(text)) if !text.trim().is_empty() => {
+                transcript.add_message(Message::User {
+                    text: text.to_string(),
+                    timestamp,
+                });
             }
             Some(Value::Array(blocks)) => {
                 for block in blocks {
