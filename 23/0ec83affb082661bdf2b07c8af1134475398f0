@@ -1,0 +1,36 @@
+src/commands/share_tui.rs
+  36ba8859af91aa38 181-183,185-186,188-189,203,205-207,209,211-213,218,220-222
+src/daemon.rs
+  36ba8859af91aa38 5512
+src/commands/checkpoint_agent/pi_preset.rs
+  36ba8859af91aa38 416-420
+src/git/repository.rs
+  36ba8859af91aa38 2960
+src/authorship/rebase_authorship.rs
+  36ba8859af91aa38 785-787,789,805,4932
+src/commands/blame.rs
+  36ba8859af91aa38 1227
+tests/integration/performance.rs
+  36ba8859af91aa38 597
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "230ec83affb082661bdf2b07c8af1134475398f0",
+  "prompts": {
+    "36ba8859af91aa38": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5698da67-cfa5-4825-bd95-691868f3ce35",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Praveen Raj",
+      "messages": [],
+      "total_additions": 35,
+      "total_deletions": 47,
+      "accepted_lines": 34,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/bcba4b4fec574ed66651f2ee07c05f2550701b367eb32782dae827ca7e1eb5ca"
+    }
+  }
+}
