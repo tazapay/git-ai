@@ -782,9 +782,11 @@ pub fn rewrite_authorship_after_squash_or_rebase(
     // discover_and_load_foreign_prompts can fail silently (grep miss, timing),
     // leaving attestations that reference prompt IDs not in the metadata.
     for (prompt_id, mut record) in source_prompt_records {
-        if !authorship_log.metadata.prompts.contains_key(&prompt_id) {
+        if let std::collections::btree_map::Entry::Vacant(e) =
+            authorship_log.metadata.prompts.entry(prompt_id)
+        {
             if let Some((additions, deletions, overriden, source_accepted)) =
-                summed_totals.get(&prompt_id)
+                summed_totals.get(e.key())
             {
                 record.total_additions = *additions;
                 record.total_deletions = *deletions;
@@ -800,7 +802,7 @@ pub fn rewrite_authorship_after_squash_or_rebase(
                     record.accepted_lines = 0;
                 }
             }
-            authorship_log.metadata.prompts.insert(prompt_id, record);
+            e.insert(record);
         }
     }
 
@@ -4927,7 +4929,7 @@ fn build_contributors(
         get_reference_as_authorship_log_v3(repo, sha)
             .ok()
             .and_then(|log| log.metadata.contributors)
-            .map_or(false, |c| !c.is_empty())
+            .is_some_and(|c| !c.is_empty())
     });
     if let Some(merged_log) = merged_log
         && !any_source_has_contributors
