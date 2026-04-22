@@ -40,6 +40,8 @@ pub struct ContributorStats {
     pub mixed_additions: u32,
     #[serde(default)]
     pub ai_acceptance_rate: f64,
+    #[serde(default)]
+    pub ai_contribution_rate: f64,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tool_model_breakdown: BTreeMap<String, ToolModelContributorStats>,
 }
@@ -75,6 +77,19 @@ impl ContributorStats {
         } else {
             self.ai_acceptance_rate = 0.0;
         }
+
+        // ai_contribution_rate = ai_accepted / (ai_accepted + human_additions) * 100
+        // Since human_additions = manual_additions + mixed_additions and
+        // ai_additions = ai_accepted + mixed_additions, the denominator equals
+        // total_additions (manual + ai_accepted + mixed) — no double-counting.
+        let contribution_denom = self.ai_accepted + self.human_additions;
+        if contribution_denom > 0 {
+            self.ai_contribution_rate =
+                ((self.ai_accepted as f64 / contribution_denom as f64) * 10000.0).round() / 100.0;
+        } else {
+            self.ai_contribution_rate = 0.0;
+        }
+
         for tm_stats in self.tool_model_breakdown.values_mut() {
             if tm_stats.ai_additions > 0 {
                 tm_stats.ai_acceptance_rate =
@@ -526,6 +541,64 @@ mod tests {
             s.tool_model_breakdown["cursor::gpt-4o"].ai_acceptance_rate,
             66.67
         );
+    }
+
+    // --- ai_contribution_rate tests ---
+
+    fn make_stats_full(
+        ai_accepted: u32,
+        mixed_additions: u32,
+        manual_additions: u32,
+    ) -> ContributorStats {
+        let mut s = ContributorStats {
+            ai_accepted,
+            ai_additions: ai_accepted + mixed_additions,
+            mixed_additions,
+            manual_additions,
+            human_additions: manual_additions + mixed_additions,
+            ..Default::default()
+        };
+        s.recalculate_acceptance_rates();
+        s
+    }
+
+    #[test]
+    fn test_contribution_rate_pure_ai() {
+        // ai_accepted=10, human_additions=0 -> 10/10 = 100.0
+        let s = make_stats_full(10, 0, 0);
+        assert_eq!(s.ai_contribution_rate, 100.0);
+    }
+
+    #[test]
+    fn test_contribution_rate_pure_manual() {
+        // ai_accepted=0, human_additions=10 -> 0/10 = 0.0
+        let s = make_stats_full(0, 0, 10);
+        assert_eq!(s.ai_contribution_rate, 0.0);
+    }
+
+    #[test]
+    fn test_contribution_rate_mixed_lowers_ratio() {
+        // ai_accepted=50, mixed=20, manual=30 -> human_additions=50
+        // 50 / (50 + 50) = 50.0
+        let s = make_stats_full(50, 20, 30);
+        assert_eq!(s.ai_contribution_rate, 50.0);
+        // Sanity: ai_acceptance_rate treats mixed differently: 50/70 = 71.43
+        assert_eq!(s.ai_acceptance_rate, 71.43);
+    }
+
+    #[test]
+    fn test_contribution_rate_rounding() {
+        // ai_accepted=1, human_additions=2 -> 1/3 * 100 = 33.333... -> 33.33
+        let s = make_stats_full(1, 0, 2);
+        assert_eq!(s.ai_contribution_rate, 33.33);
+    }
+
+    #[test]
+    fn test_contribution_rate_zero_denominator() {
+        // Empty commit (all deletions): no additions at all
+        let mut s = ContributorStats::default();
+        s.recalculate_acceptance_rates();
+        assert_eq!(s.ai_contribution_rate, 0.0);
     }
 
     #[test]

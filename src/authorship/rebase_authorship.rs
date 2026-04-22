@@ -813,7 +813,7 @@ pub fn rewrite_authorship_after_squash_or_rebase(
         authorship_log.metadata.contributors = Some(contributors);
     }
 
-    tracing::debug!(&format!(
+    tracing::debug!(
         "Created authorship log with {} attestations, {} prompts, contributors={}",
         authorship_log.attestations.len(),
         authorship_log.metadata.prompts.len(),
@@ -822,7 +822,7 @@ pub fn rewrite_authorship_after_squash_or_rebase(
             .contributors
             .as_ref()
             .map_or(0, |c| c.len()),
-    ));
+    );
 
     // Step 7: Save authorship log to git notes
     let authorship_json = authorship_log
@@ -7549,6 +7549,7 @@ mod tests {
             ai_accepted: 3,
             mixed_additions: 2,
             ai_acceptance_rate: 0.0,
+            ai_contribution_rate: 0.0,
             tool_model_breakdown: BTreeMap::new(),
         };
         a.tool_model_breakdown.insert(
@@ -7569,6 +7570,7 @@ mod tests {
             ai_accepted: 3,
             mixed_additions: 1,
             ai_acceptance_rate: 0.0,
+            ai_contribution_rate: 0.0,
             tool_model_breakdown: BTreeMap::new(),
         };
         b.tool_model_breakdown.insert(
@@ -7592,6 +7594,8 @@ mod tests {
         assert_eq!(a.mixed_additions, 3);
         // 6/9 * 100 = 66.67
         assert!((a.ai_acceptance_rate - 66.67).abs() < 0.01);
+        // ai_contribution_rate: 6 / (6 + 15) * 100 = 28.57
+        assert!((a.ai_contribution_rate - 28.57).abs() < 0.01);
 
         let tm = a.tool_model_breakdown.get("claude::opus").unwrap();
         assert_eq!(tm.ai_additions, 9);
@@ -7611,6 +7615,8 @@ mod tests {
         };
         stats.recalculate_acceptance_rates();
         assert_eq!(stats.ai_acceptance_rate, 0.0);
+        // Pure-manual commit: 0 / (0 + 10) = 0.0
+        assert_eq!(stats.ai_contribution_rate, 0.0);
     }
 
     #[test]
