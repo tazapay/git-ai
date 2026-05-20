@@ -1,6 +1,6 @@
 package org.jetbrains.plugins.template.services
 
-import com.intellij.ide.plugins.PluginManagerCore
+import com.intellij.ide.plugins.PluginManager
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.components.Service
@@ -158,7 +158,7 @@ class TelemetryService : Disposable {
             val pluginIdClass = Class.forName("com.intellij.openapi.extensions.PluginId")
             val getIdMethod = pluginIdClass.getMethod("getId", String::class.java)
             val pluginId = getIdMethod.invoke(null, PLUGIN_ID) as? PluginId
-            pluginId?.let { PluginManagerCore.getPlugin(it)?.version } ?: "unknown"
+            pluginId?.let { PluginManager.getPlugin(it)?.version } ?: "unknown"
         } catch (e: Exception) {
             "unknown"
         }
