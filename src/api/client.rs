@@ -65,7 +65,7 @@ fn try_load_auth_token() -> Option<String> {
 ///
 /// Runs `git var GIT_COMMITTER_IDENT` to get the current user's identity,
 /// respecting the full git precedence chain (env vars > config > system defaults).
-/// Returns `None` if the identity cannot be determined.
+/// Falls back to the system hostname if git identity is unavailable.
 fn resolve_git_identity() -> Option<String> {
     let args = vec!["var".to_string(), "GIT_COMMITTER_IDENT".to_string()];
     if let Ok(output) = exec_git(&args)
@@ -76,7 +76,35 @@ fn resolve_git_identity() -> Option<String> {
             return Some(encode_for_header(&formatted));
         }
     }
-    None
+    resolve_hostname().map(|h| encode_for_header(&h))
+}
+
+fn resolve_hostname() -> Option<String> {
+    #[cfg(windows)]
+    if let Ok(h) = std::env::var("COMPUTERNAME")
+        && !h.trim().is_empty()
+    {
+        return Some(h.trim().to_string());
+    }
+    if let Ok(h) = std::env::var("HOSTNAME")
+        && !h.trim().is_empty()
+    {
+        return Some(h.trim().to_string());
+    }
+    let mut cmd = std::process::Command::new("hostname");
+    #[cfg(windows)]
+    {
+        use crate::utils::CREATE_NO_WINDOW;
+        std::os::windows::process::CommandExt::creation_flags(&mut cmd, CREATE_NO_WINDOW);
+    }
+    let output = cmd.output().ok()?;
+    let h = String::from_utf8(output.stdout).ok()?;
+    let h = h.trim();
+    if h.is_empty() {
+        None
+    } else {
+        Some(h.to_string())
+    }
 }
 
 /// Percent-encode non-ASCII and control bytes so the value is safe for HTTP headers.
