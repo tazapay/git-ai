@@ -17,7 +17,7 @@ on:
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -88,7 +88,7 @@ jobs:
           path: agent-support/vscode
 
       - name: Publish to VS Code Marketplace
-        run: npx vsce publish --packagePath *.vsix
+        run: npx @vscode/vsce@3.9.1 publish --packagePath *.vsix
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
@@ -119,7 +119,7 @@ jobs:
           path: agent-support/vscode
 
       - name: Publish to OpenVSX
-        run: npx ovsx publish *.vsix
+        run: npx ovsx@0.10.12 publish *.vsix
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
@@ -132,6 +132,8 @@ jobs:
       (needs.publish-ovsx.result == 'success' || needs.publish-ovsx.result == 'skipped') &&
       (needs.publish-vsce.result == 'success' || needs.publish-ovsx.result == 'success')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: agent-support/vscode

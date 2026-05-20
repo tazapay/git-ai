@@ -23,7 +23,6 @@ env:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   # ── Version Resolution ─────────────────────────────────────────────────────
@@ -349,6 +348,8 @@ jobs:
     needs: [tier1-hook-wiring, tier2-live-integration]
     if: ${{ always() && (needs.tier1-hook-wiring.result == 'failure' || needs.tier2-live-integration.result == 'failure') }}
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
       - name: Notify Slack
         uses: slackapi/slack-github-action@fcfb566f8b0aab22203f066d80ca1d7e4b5d05b3 # v1
