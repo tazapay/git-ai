@@ -1,0 +1,21 @@
+src/authorship/rebase_authorship.rs
+  s_9dbcc49fcc2ba1::t_1e06d9e6342ed9 4975-4994,5066-5075,5078-5079,5176-5177,5208-5217,5220-5221,5223-5229,5279-5290
+  s_9dbcc49fcc2ba1::t_74f88ea576c1ce 5478-5490,5514-5515,5518-5525,5549-5590,5592-5612,5625,5628,5671-5732
+  s_9dbcc49fcc2ba1::t_78f913546ba79d 5746-5749,8283-8304
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "f904d1ae013b755a71f0b7324bf33ff500c11211",
+  "prompts": {},
+  "sessions": {
+    "s_9dbcc49fcc2ba1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e44df-7f4c-7f10-9a48-91adc9834b19",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Hithesh <hithesh@tazapay.com>"
+    }
+  }
+}
