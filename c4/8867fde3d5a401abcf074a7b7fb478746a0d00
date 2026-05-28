@@ -1,0 +1,48 @@
+src/git/test_utils.rs
+  s_5b970fa3a804bb::t_fd80cbc7a9f399 128,130
+  s_5b970fa3a804bb::t_8b6ff13bf54ecd 166,176-177,190-198
+  s_5b970fa3a804bb::t_675013b0e95afd 167-175
+  s_5b970fa3a804bb::t_7a0ecca8a607fd 154-165
+  s_5b970fa3a804bb::t_ee0d44f5303132 183-189
+  s_5b970fa3a804bb::t_818894e2b4e65b 178-182
+src/authorship/rebase_authorship.rs
+  s_5b970fa3a804bb::t_4fe45b84f16a0e 5199-5254
+  s_5b970fa3a804bb::t_4214d9b2246e5e 5889-5895,5901
+  s_5b970fa3a804bb::t_7c8760fc8e9f29 6011-6017,6023
+  s_5b970fa3a804bb::t_f7b22e003acb81 5597-5598
+  s_5b970fa3a804bb::t_83844bc16c56c3 5917
+  s_5b970fa3a804bb::t_437e76b7036c14 5019-5024,5028-5054
+  s_5b970fa3a804bb::t_81fd114d57367b 5929,5936-5937,5940
+  s_5b970fa3a804bb::t_3316cf0a021819 5489-5584
+  s_5b970fa3a804bb::t_be36520e8e3267 5025-5027
+  s_5b970fa3a804bb::t_e1f89a4efdfc2c 8023
+  s_5b970fa3a804bb::t_88ee930f4959ca 5960-5962,5968
+  s_5b970fa3a804bb::t_5904e25e486825 5941-5942
+  s_5b970fa3a804bb::t_59a00ec29c7e15 7633,7660
+  s_5b970fa3a804bb::t_47f29b0f4b4c9f 4944-4945
+  s_5b970fa3a804bb::t_65974a65dae9fe 5615-5626
+  s_5b970fa3a804bb::t_737f02492e6d7f 5596,5599-5601
+  s_5b970fa3a804bb::t_bbbf3abb928abc 4953-4963,4965-4966
+  s_5b970fa3a804bb::t_7a7b24a78da4dd 7988-8022,8024-8164
+tests/integration/ci_squash_rebase.rs
+  s_5b970fa3a804bb::t_1ba2890a4da755 1503,1650,1765
+src/authorship/stats.rs
+  s_5b970fa3a804bb::t_fc4e56756eb97e 334
+  s_5b970fa3a804bb::t_a313b659fda0f0 609
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c48867fde3d5a401abcf074a7b7fb478746a0d00",
+  "prompts": {},
+  "sessions": {
+    "s_5b970fa3a804bb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bd2add47-7ab8-4320-879a-3b1a6f9b9e10",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Hithesh <hithesh@tazapay.com>"
+    }
+  }
+}
