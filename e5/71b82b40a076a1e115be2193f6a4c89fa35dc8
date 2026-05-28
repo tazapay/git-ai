@@ -1,0 +1,19 @@
+src/authorship/rebase_authorship.rs
+  s_5b970fa3a804bb::t_e23d5777fc2ee9 5212-5213,5625-5626,7635,7662,8040-8044,8063,8084-8087,8128-8131,8144-8148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e571b82b40a076a1e115be2193f6a4c89fa35dc8",
+  "prompts": {},
+  "sessions": {
+    "s_5b970fa3a804bb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bd2add47-7ab8-4320-879a-3b1a6f9b9e10",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Hithesh <hithesh@tazapay.com>"
+    }
+  }
+}
