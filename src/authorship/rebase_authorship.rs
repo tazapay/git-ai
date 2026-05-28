@@ -5209,7 +5209,8 @@ fn build_contributors(
                     get_commit_diff_added_lines(repo, sha)
                 };
 
-                let per_file_added_lines = get_per_file_added_lines_for_commits(repo, &[sha.clone()]);
+                let per_file_added_lines =
+                    get_per_file_added_lines_for_commits(repo, &[sha.clone()]);
                 let session_lines = accepted_lines_by_session(&note, &per_file_added_lines);
                 let mut total_ai_accepted: u32 = 0;
 
@@ -5621,7 +5622,8 @@ mod tests {
             vec![LineRange::Range(1, 1)],
         ));
         log.attestations.push(file);
-        log.serialize_to_string().expect("serialize authorship note")
+        log.serialize_to_string()
+            .expect("serialize authorship note")
     }
 
     fn write_minimal_authorship_note(
@@ -7630,7 +7632,7 @@ mod tests {
                 PromptRecord {
                     agent_id: agent_id.clone(),
                     human_author: None,
-                        total_additions: 5,
+                    total_additions: 5,
                     total_deletions: 0,
                     accepted_lines: 5,
                     overriden_lines: 0,
@@ -7657,7 +7659,7 @@ mod tests {
                 PromptRecord {
                     agent_id: agent_id.clone(),
                     human_author: None,
-                        total_additions: 10,
+                    total_additions: 10,
                     total_deletions: 0,
                     accepted_lines: 10,
                     overriden_lines: 0,
@@ -8035,7 +8037,11 @@ mod tests {
         let mut sessions = std::collections::BTreeMap::new();
         sessions.insert(
             "s_aaa".to_string(),
-            make_session_record("claude", "claude-3-sonnet", Some("Alice <alice@example.com>")),
+            make_session_record(
+                "claude",
+                "claude-3-sonnet",
+                Some("Alice <alice@example.com>"),
+            ),
         );
 
         // Session s_aaa::t_001 attests lines 1-3; added lines are 1,2,3
@@ -8054,10 +8060,10 @@ mod tests {
     #[test]
     fn test_build_contributors_era_a_prompts_only_still_works() {
         // Era A: sessions map is empty, accepted_lines_by_session should return empty.
+        use crate::authorship::authorship_log::LineRange;
         use crate::authorship::authorship_log_serialization::{
             AttestationEntry, AuthorshipLog, AuthorshipMetadata, FileAttestation,
         };
-        use crate::authorship::authorship_log::LineRange;
 
         let mut file_att = FileAttestation::new("src/main.rs".to_string());
         file_att.add_entry(AttestationEntry::new(
@@ -8075,7 +8081,10 @@ mod tests {
 
         let result = accepted_lines_by_session(&log, &per_file);
         // No s_ entries → result should be empty
-        assert!(result.is_empty(), "Era A prompts should not appear in session result");
+        assert!(
+            result.is_empty(),
+            "Era A prompts should not appear in session result"
+        );
     }
 
     #[test]
@@ -8116,7 +8125,10 @@ mod tests {
         let result = accepted_lines_by_session(&log, &per_file);
         // Only s_bbb contributes 3 lines; prompt entry is ignored by this helper
         assert_eq!(result.get("s_bbb").copied().unwrap_or(0), 3);
-        assert!(!result.contains_key("promptXYZ"), "prompt hashes must not appear in session result");
+        assert!(
+            !result.contains_key("promptXYZ"),
+            "prompt hashes must not appear in session result"
+        );
     }
 
     #[test]
@@ -8129,7 +8141,11 @@ mod tests {
         let mut sessions = std::collections::BTreeMap::new();
         sessions.insert(
             "s_c1".to_string(),
-            make_session_record("claude", "claude-3-5-sonnet", Some("Carol <carol@example.com>")),
+            make_session_record(
+                "claude",
+                "claude-3-5-sonnet",
+                Some("Carol <carol@example.com>"),
+            ),
         );
         sessions.insert(
             "s_c2".to_string(),

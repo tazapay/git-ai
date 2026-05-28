@@ -836,7 +836,6 @@ mod tests {
         assert_debug_snapshot!(deletion_only_output);
     }
 
-
     #[test]
     fn test_accepted_lines_no_authorship_log() {
         let added_lines: HashMap<String, Vec<u32>> = HashMap::new();
@@ -1031,7 +1030,6 @@ mod tests {
         let count = line_range_overlap_len(&LineRange::Range(1, 10), &[]);
         assert_eq!(count, 0);
     }
-
 
     #[test]
     fn test_stats_command_nonexistent_commit() {
