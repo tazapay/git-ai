@@ -5210,7 +5210,7 @@ fn build_contributors(
                 };
 
                 let per_file_added_lines =
-                    get_per_file_added_lines_for_commits(repo, &[sha.clone()]);
+                    get_per_file_added_lines_for_commits(repo, std::slice::from_ref(sha));
                 let session_lines = accepted_lines_by_session(&note, &per_file_added_lines);
                 let mut total_ai_accepted: u32 = 0;
 
@@ -5522,16 +5522,15 @@ fn get_per_file_added_lines_for_commits(
         };
         let mut current_file: Option<String> = None;
         for line in output.lines() {
-            if line.starts_with("+++ b/") {
-                current_file = Some(line[6..].to_string());
-            } else if line.starts_with("@@") {
-                if let (Some(file), Some(hunk)) = (current_file.as_ref(), parse_hunk_header(line)) {
-                    if hunk.new_count > 0 {
-                        let lines = per_file.entry(file.clone()).or_default();
-                        for n in 0..hunk.new_count {
-                            lines.push(hunk.new_start + n);
-                        }
-                    }
+            if let Some(path) = line.strip_prefix("+++ b/") {
+                current_file = Some(path.to_string());
+            } else if line.starts_with("@@")
+                && let (Some(file), Some(hunk)) = (current_file.as_ref(), parse_hunk_header(line))
+                && hunk.new_count > 0
+            {
+                let lines = per_file.entry(file.clone()).or_default();
+                for n in 0..hunk.new_count {
+                    lines.push(hunk.new_start + n);
                 }
             }
         }
@@ -7996,7 +7995,6 @@ mod tests {
             crate::authorship::authorship_log::SessionRecord,
         >,
     ) -> crate::authorship::authorship_log_serialization::AuthorshipLog {
-        use crate::authorship::authorship_log::LineRange;
         use crate::authorship::authorship_log_serialization::{
             AttestationEntry, AuthorshipLog, AuthorshipMetadata, FileAttestation,
         };
@@ -8136,7 +8134,7 @@ mod tests {
         // Invariant: sum of accepted_lines across session results must equal
         // what accepted_lines_from_attestations computes for the same log.
         use crate::authorship::authorship_log::LineRange;
-        use crate::authorship::stats::{accepted_lines_from_attestations, line_range_overlap_len};
+        use crate::authorship::stats::accepted_lines_from_attestations;
 
         let mut sessions = std::collections::BTreeMap::new();
         sessions.insert(
