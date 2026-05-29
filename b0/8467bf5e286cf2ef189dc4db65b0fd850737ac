@@ -1,0 +1,29 @@
+src/authorship/rebase_authorship.rs
+  s_5b970fa3a804bb::t_554e17abbd0615 5086-5087
+  s_5b970fa3a804bb::t_801c3d75aa61f7 5543,5557-5566
+  s_5b970fa3a804bb::t_a3eceb28811d4c 8377
+  s_5b970fa3a804bb::t_94562f6b865c36 5772-5773
+  s_5b970fa3a804bb::t_2559f33845588e 5301,5311
+  s_5b970fa3a804bb::t_4d370653bdc5fa 4964-4968,4972-4985,4987-4988,4997-5015,5039,5050-5085,5088-5100,5103-5104,5196-5197,5220,5231-5239,5242-5243,5245-5300,5302-5310,5314-5322,5538-5542,5544-5556,5590-5771,5785,8142-8376
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "b08467bf5e286cf2ef189dc4db65b0fd850737ac",
+  "prompts": {},
+  "humans": {
+    "h_e138945444558d": {
+      "author": "Hithesh <hithesh@tazapay.com>"
+    }
+  },
+  "sessions": {
+    "s_5b970fa3a804bb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bd2add47-7ab8-4320-879a-3b1a6f9b9e10",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Hithesh <hithesh@tazapay.com>"
+    }
+  }
+}
