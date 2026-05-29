@@ -6,7 +6,7 @@ use crate::error::GitAiError;
 use crate::git::notes_api::{
     read_authorship_v3 as get_reference_as_authorship_log_v3, read_note as show_authorship_note,
 };
-use crate::git::repository::{CommitRange, Repository};
+use crate::git::repository::{CommitRange, Repository, exec_git, exec_git_stdin};
 use crate::git::sync_authorship::fetch_authorship_notes;
 use std::fs;
 use std::path::PathBuf;

@@ -3751,6 +3751,26 @@ fn build_metadata_only_authorship_log_from_source_notes(
     Ok(Some(authorship_log))
 }
 
+/// Test-only wrapper that builds a RebaseNoteCache and calls the cached version.
+#[cfg(test)]
+fn try_fast_path_rebase_note_remap(
+    repo: &Repository,
+    original_commits: &[String],
+    new_commits: &[String],
+    commits_to_process_lookup: &HashSet<&str>,
+    tracked_paths: &[String],
+) -> Result<bool, GitAiError> {
+    let note_cache = load_rebase_note_cache(repo, original_commits, new_commits)?;
+    try_fast_path_rebase_note_remap_cached(
+        repo,
+        original_commits,
+        new_commits,
+        commits_to_process_lookup,
+        tracked_paths,
+        &note_cache,
+    )
+}
+
 /// Cached version of try_fast_path_rebase_note_remap that uses pre-loaded note data.
 #[doc(hidden)]
 pub fn try_fast_path_rebase_note_remap_cached(
@@ -5894,7 +5914,6 @@ mod tests {
                     model: "test-model".to_string(),
                 },
                 human_author: None,
-                messages: vec![],
                 total_additions: 5,
                 total_deletions: 0,
                 accepted_lines: 5,
@@ -6089,7 +6108,6 @@ mod tests {
                     model: "gpt-4".to_string(),
                 },
                 human_author: None,
-                messages: vec![],
                 total_additions: 13,
                 total_deletions: 0,
                 accepted_lines: 13,
@@ -6110,7 +6128,6 @@ mod tests {
                     model: "gpt-4o".to_string(),
                 },
                 human_author: None,
-                messages: vec![],
                 total_additions: 6,
                 total_deletions: 0,
                 accepted_lines: 6,
@@ -6222,7 +6239,6 @@ mod tests {
                     model: "test-model".to_string(),
                 },
                 human_author: None,
-                messages: vec![],
                 total_additions: 3,
                 total_deletions: 0,
                 accepted_lines: 3,
@@ -6368,7 +6384,6 @@ mod tests {
                     model: "test-model".to_string(),
                 },
                 human_author: None,
-                messages: vec![],
                 total_additions: 4,
                 total_deletions: 0,
                 accepted_lines: 4,
@@ -6496,7 +6511,6 @@ mod tests {
                     model: "gpt-4".to_string(),
                 },
                 human_author: None,
-                messages: vec![],
                 total_additions: 8,
                 total_deletions: 0,
                 accepted_lines: 8,
@@ -6670,7 +6684,6 @@ mod tests {
                     model: "gpt-4".to_string(),
                 },
                 human_author: None,
-                messages: vec![],
                 total_additions: 13,
                 total_deletions: 0,
                 accepted_lines: 13,
@@ -6691,7 +6704,6 @@ mod tests {
                     model: "gpt-4o".to_string(),
                 },
                 human_author: None,
-                messages: vec![],
                 total_additions: 16,
                 total_deletions: 0,
                 accepted_lines: 16,
@@ -7408,7 +7420,6 @@ mod tests {
                 PromptRecord {
                     agent_id: agent_id.clone(),
                     human_author: None,
-                    messages: vec![],
                     total_additions: 5,
                     total_deletions: 0,
                     accepted_lines: 5,
@@ -7436,7 +7447,6 @@ mod tests {
                 PromptRecord {
                     agent_id: agent_id.clone(),
                     human_author: None,
-                    messages: vec![],
                     total_additions: 10,
                     total_deletions: 0,
                     accepted_lines: 10,

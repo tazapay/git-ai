@@ -125,9 +125,11 @@ impl TmpRepo {
         self.commit_all(message)
     }
 
-    /// Create a new branch (does not switch to it).
+    /// Create a new branch from the current HEAD and switch to it (equivalent
+    /// to `git checkout -b`). This matches the historical TmpRepo semantics
+    /// that the inline unit tests depend on.
     pub fn create_branch(&self, name: &str) -> Result<(), GitAiError> {
-        self.git_command(&["branch", name])?;
+        self.git_command(&["checkout", "-b", name])?;
         Ok(())
     }
 
@@ -149,6 +151,51 @@ impl TmpRepo {
     /// previously triggered a `git-ai checkpoint` here. Benchmarks that need
     /// real attribution data should pre-write notes via `notes_add`.
     pub fn trigger_checkpoint_with_author(&self, _author: &str) -> Result<(), GitAiError> {
+        Ok(())
+    }
+
+    /// Return the SHA of the current HEAD commit.
+    pub fn get_head_commit_sha(&self) -> Result<String, GitAiError> {
+        Ok(self.git_command(&["rev-parse", "HEAD"])?.trim().to_string())
+    }
+
+    /// Return the name of the currently checked-out branch.
+    pub fn current_branch(&self) -> Result<String, GitAiError> {
+        Ok(self
+            .git_command(&["branch", "--show-current"])?
+            .trim()
+            .to_string())
+    }
+
+    /// Cherry-pick one or more commits onto the current branch.
+    pub fn cherry_pick(&self, commits: &[&str]) -> Result<(), GitAiError> {
+        let mut args = vec!["cherry-pick"];
+        args.extend_from_slice(commits);
+        self.git_command(&args)?;
+        Ok(())
+    }
+
+    /// Amend the current HEAD commit with a new message and return the new SHA.
+    pub fn amend_commit(&self, message: &str) -> Result<String, GitAiError> {
+        self.git_command(&["add", "-A"])?;
+        self.git_command(&["commit", "--amend", "-m", message])?;
+        self.get_head_commit_sha()
+    }
+
+    /// Merge `branch` into the current branch with a commit message.
+    pub fn merge_branch(&self, branch: &str, message: &str) -> Result<(), GitAiError> {
+        self.git_command(&["merge", "--no-ff", branch, "-m", message])?;
+        Ok(())
+    }
+
+    /// Test-only no-op stub mirroring the historical AI checkpoint helper.
+    /// Tests that need real AI attribution should write notes directly.
+    pub fn trigger_checkpoint_with_ai(
+        &self,
+        _agent: &str,
+        _session: Option<&str>,
+        _transcript: Option<&str>,
+    ) -> Result<(), GitAiError> {
         Ok(())
     }
 }
