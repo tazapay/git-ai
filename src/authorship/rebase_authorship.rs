@@ -4,7 +4,11 @@ use crate::error::GitAiError;
 use crate::git::authorship_traversal::{
     commits_have_authorship_notes, load_ai_touched_files_for_commits,
 };
-use crate::git::refs::{get_reference_as_authorship_log_v3, note_blob_oids_for_commits};
+use crate::git::notes_api::{
+    read_authorship_v3 as get_reference_as_authorship_log_v3,
+    read_note_blob_oids as note_blob_oids_for_commits, write_note as notes_add,
+    write_notes_batch as notes_add_batch,
+};
 use crate::git::repository::{CommitRange, Repository, exec_git, exec_git_stdin};
 use crate::git::rewrite_log::RewriteLogEvent;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -17,7 +21,8 @@ struct PromptLineMetrics {
 
 /// Pre-loaded note data for all commits involved in a rebase.
 /// Eliminates redundant git subprocess calls by reading everything once upfront.
-struct RebaseNoteCache {
+#[doc(hidden)]
+pub struct RebaseNoteCache {
     /// Which new commits already have authorship notes (to skip reprocessing)
     new_commits_with_notes: HashSet<String>,
     /// Note blob OIDs for original commits (commit_sha → blob_oid)
@@ -28,7 +33,8 @@ struct RebaseNoteCache {
     ai_touched_files: HashSet<String>,
 }
 
-fn load_rebase_note_cache(
+#[doc(hidden)]
+pub fn load_rebase_note_cache(
     repo: &Repository,
     original_commits: &[String],
     new_commits: &[String],
@@ -395,6 +401,7 @@ pub fn prepare_working_log_after_squash(
             initial_attributions.prompts,
             initial_attributions.humans,
             initial_file_contents,
+            initial_attributions.sessions,
         )?;
     }
 
@@ -471,6 +478,7 @@ pub fn prepare_working_log_after_squash_from_final_state(
             initial_attributions.prompts,
             initial_attributions.humans,
             initial_file_contents,
+            initial_attributions.sessions,
         )?;
     }
 
@@ -533,7 +541,10 @@ pub fn restore_virtual_attribution_carryover(
         final_state.clone(),
     )?;
     let initial_attributions = merged_va.to_initial_working_log_only();
-    if initial_attributions.files.is_empty() && initial_attributions.prompts.is_empty() {
+    if initial_attributions.files.is_empty()
+        && initial_attributions.prompts.is_empty()
+        && initial_attributions.sessions.is_empty()
+    {
         return Ok(());
     }
 
@@ -543,6 +554,7 @@ pub fn restore_virtual_attribution_carryover(
         initial_attributions.prompts,
         initial_attributions.humans,
         final_state,
+        initial_attributions.sessions,
     )?;
     Ok(())
 }
@@ -634,7 +646,7 @@ pub fn rewrite_authorship_after_squash_or_rebase(
                 let authorship_json = authorship_log.serialize_to_string().map_err(|_| {
                     GitAiError::Generic("Failed to serialize authorship log".to_string())
                 })?;
-                crate::git::refs::notes_add(repo, merge_commit_sha, &authorship_json)?;
+                notes_add(repo, merge_commit_sha, &authorship_json)?;
             }
         } else {
             // No authorship notes in source commits. Still build contributors
@@ -726,6 +738,9 @@ pub fn rewrite_authorship_after_squash_or_rebase(
             }
             for (hash, record) in log.metadata.humans {
                 authorship_log.metadata.humans.entry(hash).or_insert(record);
+            }
+            for (id, record) in log.metadata.sessions {
+                authorship_log.metadata.sessions.entry(id).or_insert(record);
             }
         }
     }
@@ -831,7 +846,7 @@ pub fn rewrite_authorship_after_squash_or_rebase(
         .serialize_to_string()
         .map_err(|_| GitAiError::Generic("Failed to serialize authorship log".to_string()))?;
 
-    crate::git::refs::notes_add(repo, merge_commit_sha, &authorship_json)?;
+    notes_add(repo, merge_commit_sha, &authorship_json)?;
 
     tracing::debug!(
         "✓ Saved authorship log for merge commit {}",
@@ -866,9 +881,10 @@ fn try_reconstruct_attributions_from_notes_cached(
     HashMap<String, String>,
     BTreeMap<String, BTreeMap<String, crate::authorship::authorship_log::PromptRecord>>,
     BTreeMap<String, crate::authorship::authorship_log::HumanRecord>,
+    BTreeMap<String, crate::authorship::authorship_log::SessionRecord>,
 )> {
     use crate::authorship::attribution_tracker::LineAttribution;
-    use crate::authorship::authorship_log::HumanRecord;
+    use crate::authorship::authorship_log::{HumanRecord, SessionRecord};
     use crate::authorship::authorship_log_serialization::AuthorshipLog;
 
     let pathspec_set: HashSet<&str> = pathspecs.iter().map(String::as_str).collect();
@@ -877,6 +893,7 @@ fn try_reconstruct_attributions_from_notes_cached(
         BTreeMap<String, crate::authorship::authorship_log::PromptRecord>,
     > = BTreeMap::new();
     let mut humans: BTreeMap<String, HumanRecord> = BTreeMap::new();
+    let mut sessions: BTreeMap<String, SessionRecord> = BTreeMap::new();
 
     // Parse all notes and check if any exist.
     let mut parsed_logs: HashMap<String, AuthorshipLog> = HashMap::new();
@@ -960,6 +977,10 @@ fn try_reconstruct_attributions_from_notes_cached(
             for (hash, record) in &log.metadata.humans {
                 humans.entry(hash.clone()).or_insert(record.clone());
             }
+            // Collect sessions (union-merge: first writer wins).
+            for (id, record) in &log.metadata.sessions {
+                sessions.entry(id.clone()).or_insert(record.clone());
+            }
         }
     }
 
@@ -979,7 +1000,7 @@ fn try_reconstruct_attributions_from_notes_cached(
         }
     }
 
-    Some((attributions, file_contents, prompts, humans))
+    Some((attributions, file_contents, prompts, humans, sessions))
 }
 
 /// Overlay a new attribution range onto an existing sorted attribution list.
@@ -1385,8 +1406,9 @@ pub fn rewrite_authorship_after_rebase_v2(
         mut current_file_contents,
         initial_prompts,
         initial_humans,
+        initial_sessions,
         _rebase_ts,
-    ) = if let Some((attrs, contents, prompts, humans)) =
+    ) = if let Some((attrs, contents, prompts, humans, sessions)) =
         try_reconstruct_attributions_from_notes_cached(
             repo,
             original_head,
@@ -1401,7 +1423,7 @@ pub fn rewrite_authorship_after_rebase_v2(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis();
-        (attrs, contents, prompts, humans, ts)
+        (attrs, contents, prompts, humans, sessions, ts)
     } else {
         tracing::debug!("Falling back to VirtualAttributions (blame-based reconstruction)");
         let new_head = new_commits.last().unwrap();
@@ -1445,8 +1467,9 @@ pub fn rewrite_authorship_after_rebase_v2(
         }
 
         let humans = current_va.humans.clone();
+        let sessions = current_va.sessions.clone();
         let ts = current_va.timestamp();
-        (attrs, contents, prompts, humans, ts)
+        (attrs, contents, prompts, humans, sessions, ts)
     };
 
     timing_phases.push((
@@ -1541,6 +1564,7 @@ pub fn rewrite_authorship_after_rebase_v2(
         original_head,
         &current_prompts,
         &initial_humans,
+        &initial_sessions,
         &current_attributions,
         &existing_files,
     );
@@ -1607,6 +1631,10 @@ pub fn rewrite_authorship_after_rebase_v2(
     // changed files, mirroring the same scoping applied to prompts/accepted_lines.
     let mut prev_delta_humans: BTreeMap<String, crate::authorship::authorship_log::HumanRecord> =
         BTreeMap::new();
+    let mut prev_delta_sessions: BTreeMap<
+        String,
+        crate::authorship::authorship_log::SessionRecord,
+    > = BTreeMap::new();
 
     for (idx, new_commit) in commits_to_process.iter().enumerate() {
         tracing::debug!(
@@ -1794,15 +1822,57 @@ pub fn rewrite_authorship_after_rebase_v2(
                         });
                     }
                 }
+                // Also check current_attributions for h_-prefixed author IDs
+                // in this commit's changed files. During squash rebase the working
+                // log for the new commit's parent won't contain the original human
+                // checkpoints, but the reconstructed attributions from original
+                // notes will have the h_ entries.
+                for file_path in &changed_files_in_commit {
+                    if let Some((_, line_attrs)) = current_attributions.get(file_path) {
+                        for line_attr in line_attrs {
+                            if line_attr.author_id.starts_with("h_") {
+                                let hash = line_attr.author_id.clone();
+                                if let Some(record) = initial_humans.get(&hash) {
+                                    map.entry(hash).or_insert_with(|| record.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                map
+            };
+            // Per-commit-delta sessions: s_<id> entries for session-attributed lines in this commit.
+            // Extract session IDs from current attributions for files changed in this commit.
+            let delta_sessions: BTreeMap<String, crate::authorship::authorship_log::SessionRecord> = {
+                let mut map = BTreeMap::new();
+                for file_path in &changed_files_in_commit {
+                    if let Some((_, line_attrs)) = current_attributions.get(file_path) {
+                        for line_attr in line_attrs {
+                            // Session author IDs start with "s_" and may include "::prompt_hash"
+                            if line_attr.author_id.starts_with("s_") {
+                                let session_id = line_attr
+                                    .author_id
+                                    .split("::")
+                                    .next()
+                                    .unwrap_or(&line_attr.author_id)
+                                    .to_string();
+                                if let Some(record) = initial_sessions.get(&session_id) {
+                                    map.entry(session_id).or_insert_with(|| record.clone());
+                                }
+                            }
+                        }
+                    }
+                }
                 map
             };
             // Only rebuild the (expensive) serde_json metadata template when the active-prompt
             // set OR accepted_lines values changed, OR when the original commit changed, OR
-            // when per-commit humans changed.
+            // when per-commit humans or sessions changed.
             let current_original_commit = new_to_original.get(new_commit).map(String::as_str);
             if active_prompt_key != prev_active_prompt_key
                 || current_original_commit != prev_original_commit.as_deref()
                 || delta_humans != prev_delta_humans
+                || delta_sessions != prev_delta_sessions
             {
                 let active_ids: HashSet<String> = active_prompt_key.keys().cloned().collect();
                 // Build per-commit contributors from the original commit's note + diff
@@ -1822,10 +1892,12 @@ pub fn rewrite_authorship_after_rebase_v2(
                     Some(&active_ids),
                     current_original_commit,
                     Some(&delta_humans),
+                    Some(&delta_sessions),
                 );
                 prev_active_prompt_key = active_prompt_key;
                 prev_original_commit = current_original_commit.map(str::to_string);
                 prev_delta_humans = delta_humans;
+                prev_delta_sessions = delta_sessions;
             }
             loop_metrics_ms += tmetrics.elapsed().as_micros();
         }
@@ -1994,7 +2066,7 @@ pub fn rewrite_authorship_after_rebase_v2(
 
     let phase_start = std::time::Instant::now();
     if !pending_note_entries.is_empty() {
-        crate::git::refs::notes_add_batch(repo, &pending_note_entries)?;
+        notes_add_batch(repo, &pending_note_entries)?;
     }
     timing_phases.push((
         format!("notes_add_batch ({} entries)", pending_note_entries.len()),
@@ -2210,8 +2282,9 @@ pub fn rewrite_authorship_after_cherry_pick(
         authorship_log.metadata.base_commit_sha = new_commit.clone();
 
         // Save computed note when it has payload; otherwise preserve original metadata-only notes.
-        let computed_note_has_payload =
-            !authorship_log.attestations.is_empty() || !authorship_log.metadata.prompts.is_empty();
+        let computed_note_has_payload = !authorship_log.attestations.is_empty()
+            || !authorship_log.metadata.prompts.is_empty()
+            || !authorship_log.metadata.sessions.is_empty();
         let authorship_json = if computed_note_has_payload {
             authorship_log.serialize_to_string().map_err(|_| {
                 GitAiError::Generic("Failed to serialize authorship log".to_string())
@@ -2231,7 +2304,7 @@ pub fn rewrite_authorship_after_cherry_pick(
             }
         };
 
-        crate::git::refs::notes_add(repo, new_commit, &authorship_json)?;
+        notes_add(repo, new_commit, &authorship_json)?;
 
         tracing::debug!(
             "Saved authorship log for cherry-picked commit {} ({} files)",
@@ -2282,7 +2355,8 @@ fn is_blob_mode(mode: &str) -> bool {
     mode.starts_with("100") || mode == "120000"
 }
 
-fn collect_changed_file_contents_from_diff(
+#[doc(hidden)]
+pub fn collect_changed_file_contents_from_diff(
     repo: &Repository,
     diff: &crate::git::diff_tree_to_tree::Diff,
     pathspecs_lookup: &HashSet<&str>,
@@ -2400,7 +2474,8 @@ fn batch_read_blob_contents(
     parse_cat_file_batch_output_with_oids(&output.stdout)
 }
 
-fn parse_cat_file_batch_output_with_oids(
+#[doc(hidden)]
+pub fn parse_cat_file_batch_output_with_oids(
     data: &[u8],
 ) -> Result<HashMap<String, String>, GitAiError> {
     let mut results = HashMap::new();
@@ -2994,7 +3069,9 @@ pub fn rewrite_authorship_after_commit_amend_with_snapshot(
     let has_existing_log = get_reference_as_authorship_log_v3(repo, original_commit).is_ok();
     let has_existing_data = if has_existing_log {
         let original_log = get_reference_as_authorship_log_v3(repo, original_commit).unwrap();
-        !original_log.metadata.prompts.is_empty() || !original_log.metadata.humans.is_empty()
+        !original_log.metadata.prompts.is_empty()
+            || !original_log.metadata.humans.is_empty()
+            || !original_log.metadata.sessions.is_empty()
     } else {
         false
     };
@@ -3057,6 +3134,39 @@ pub fn rewrite_authorship_after_commit_amend_with_snapshot(
     // Update base commit SHA
     authorship_log.metadata.base_commit_sha = amended_commit.to_string();
 
+    // Fill unattributed lines with bg agent attribution (same as post_commit path)
+    if !matches!(
+        crate::authorship::background_agent::detect(),
+        crate::authorship::background_agent::BackgroundAgent::None
+            | crate::authorship::background_agent::BackgroundAgent::WithHooks { .. }
+    ) {
+        let diff_base = if parent_sha == "initial" {
+            "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+        } else {
+            &parent_sha
+        };
+        if let Ok(added_lines) = repo.diff_added_lines(diff_base, amended_commit, None) {
+            let committed_hunks: std::collections::HashMap<
+                String,
+                Vec<crate::authorship::authorship_log::LineRange>,
+            > = added_lines
+                .into_iter()
+                .filter(|(_, lines)| !lines.is_empty())
+                .map(|(path, lines)| {
+                    (
+                        path,
+                        crate::authorship::authorship_log::LineRange::compress_lines(&lines),
+                    )
+                })
+                .collect();
+            crate::authorship::background_agent::fill_unattributed_lines(
+                &mut authorship_log,
+                &committed_hunks,
+                &human_author,
+            );
+        }
+    }
+
     // Preserve human contributors from the original commit's note — deleting a
     // KnownHuman-attributed line removes the attribution coordinate but must not
     // erase the contributor's association with the commit.
@@ -3064,9 +3174,35 @@ pub fn rewrite_authorship_after_commit_amend_with_snapshot(
         for (id, record) in original_log.metadata.humans {
             authorship_log.metadata.humans.entry(id).or_insert(record);
         }
+        // Only preserve sessions from the original commit if they are still
+        // referenced by attestations in the amended commit.
+        let referenced_session_ids: std::collections::HashSet<String> = authorship_log
+            .attestations
+            .iter()
+            .flat_map(|fa| fa.entries.iter())
+            .filter_map(|entry| {
+                if entry.hash.starts_with("s_") {
+                    Some(
+                        entry
+                            .hash
+                            .split("::")
+                            .next()
+                            .unwrap_or(&entry.hash)
+                            .to_string(),
+                    )
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for (id, record) in original_log.metadata.sessions {
+            if referenced_session_ids.contains(&id) {
+                authorship_log.metadata.sessions.entry(id).or_insert(record);
+            }
+        }
     }
 
-    // Inject custom attributes into all PromptRecords (same behavior as post_commit).
+    // Inject custom attributes into all PromptRecords and SessionRecords (same behavior as post_commit).
     // Always use Config::fresh() to support runtime config updates
     // (especially important for daemon mode, but also good for consistency)
     let custom_attrs = crate::config::Config::fresh().custom_attributes().clone();
@@ -3074,13 +3210,16 @@ pub fn rewrite_authorship_after_commit_amend_with_snapshot(
         for pr in authorship_log.metadata.prompts.values_mut() {
             pr.custom_attributes = Some(custom_attrs.clone());
         }
+        for sr in authorship_log.metadata.sessions.values_mut() {
+            sr.custom_attributes = Some(custom_attrs.clone());
+        }
     }
 
     // Save authorship log
     let authorship_json = authorship_log
         .serialize_to_string()
         .map_err(|_| GitAiError::Generic("Failed to serialize authorship log".to_string()))?;
-    crate::git::refs::notes_add(repo, amended_commit, &authorship_json)?;
+    notes_add(repo, amended_commit, &authorship_json)?;
 
     // Save INITIAL file for uncommitted attributions
     if !initial_attributions.files.is_empty() {
@@ -3092,6 +3231,7 @@ pub fn rewrite_authorship_after_commit_amend_with_snapshot(
             initial_attributions.prompts,
             initial_attributions.humans,
             initial_file_contents,
+            initial_attributions.sessions,
         )?;
     }
 
@@ -3357,6 +3497,7 @@ pub fn reconstruct_working_log_after_reset(
             initial_attributions.prompts,
             initial_attributions.humans,
             final_state,
+            initial_attributions.sessions,
         )?;
     }
 
@@ -3373,7 +3514,8 @@ pub fn reconstruct_working_log_after_reset(
 }
 
 /// Get all file paths modified across a list of commits
-fn get_pathspecs_from_commits(
+#[doc(hidden)]
+pub fn get_pathspecs_from_commits(
     repo: &Repository,
     commits: &[String],
 ) -> Result<Vec<String>, GitAiError> {
@@ -3552,7 +3694,7 @@ fn remap_notes_for_commit_pairs(
     }
 
     let count = entries.len();
-    crate::git::refs::notes_add_batch(repo, &entries)?;
+    notes_add_batch(repo, &entries)?;
 
     Ok(count)
 }
@@ -3562,11 +3704,12 @@ fn build_metadata_only_authorship_log_from_source_notes(
     source_commits: &[String],
     target_commit_sha: &str,
 ) -> Result<Option<AuthorshipLog>, GitAiError> {
-    use crate::authorship::authorship_log::HumanRecord;
+    use crate::authorship::authorship_log::{HumanRecord, SessionRecord};
 
     let mut merged_prompts = BTreeMap::new();
     let mut prompt_totals: HashMap<String, (u32, u32)> = HashMap::new();
     let mut merged_humans: BTreeMap<String, HumanRecord> = BTreeMap::new();
+    let mut merged_sessions: BTreeMap<String, SessionRecord> = BTreeMap::new();
     let mut saw_any_note = false;
 
     for commit_sha in source_commits {
@@ -3583,6 +3726,9 @@ fn build_metadata_only_authorship_log_from_source_notes(
         }
         for (hash, record) in log.metadata.humans {
             merged_humans.entry(hash).or_insert(record);
+        }
+        for (id, record) in log.metadata.sessions {
+            merged_sessions.entry(id).or_insert(record);
         }
     }
 
@@ -3601,31 +3747,13 @@ fn build_metadata_only_authorship_log_from_source_notes(
     authorship_log.metadata.base_commit_sha = target_commit_sha.to_string();
     authorship_log.metadata.prompts = merged_prompts;
     authorship_log.metadata.humans = merged_humans;
+    authorship_log.metadata.sessions = merged_sessions;
     Ok(Some(authorship_log))
 }
 
-/// Test-only wrapper that builds a RebaseNoteCache and calls the cached version.
-#[cfg(test)]
-fn try_fast_path_rebase_note_remap(
-    repo: &Repository,
-    original_commits: &[String],
-    new_commits: &[String],
-    commits_to_process_lookup: &HashSet<&str>,
-    tracked_paths: &[String],
-) -> Result<bool, GitAiError> {
-    let note_cache = load_rebase_note_cache(repo, original_commits, new_commits)?;
-    try_fast_path_rebase_note_remap_cached(
-        repo,
-        original_commits,
-        new_commits,
-        commits_to_process_lookup,
-        tracked_paths,
-        &note_cache,
-    )
-}
-
 /// Cached version of try_fast_path_rebase_note_remap that uses pre-loaded note data.
-fn try_fast_path_rebase_note_remap_cached(
+#[doc(hidden)]
+pub fn try_fast_path_rebase_note_remap_cached(
     repo: &Repository,
     original_commits: &[String],
     new_commits: &[String],
@@ -3699,7 +3827,7 @@ fn try_fast_path_rebase_note_remap_cached(
 
     let remapped_count = remapped_note_entries.len();
     let write_start = std::time::Instant::now();
-    crate::git::refs::notes_add_batch(repo, &remapped_note_entries)?;
+    notes_add_batch(repo, &remapped_note_entries)?;
 
     tracing::debug!(
         "Fast-path rebase note remap: wrote {} remapped notes in {}ms",
@@ -3789,7 +3917,7 @@ fn try_fast_path_cherry_pick_note_remap(
 
     let remapped_count = remapped_note_entries.len();
     let write_start = std::time::Instant::now();
-    crate::git::refs::notes_add_batch(repo, &remapped_note_entries)?;
+    notes_add_batch(repo, &remapped_note_entries)?;
 
     tracing::debug!(
         "Fast-path cherry-pick note remap: wrote {} remapped notes in {}ms",
@@ -3913,7 +4041,7 @@ fn build_metadata_template_parts(
     metadata: &crate::authorship::authorship_log_serialization::AuthorshipMetadata,
     prompts: &BTreeMap<String, BTreeMap<String, crate::authorship::authorship_log::PromptRecord>>,
 ) -> Option<(String, String)> {
-    build_metadata_template_parts_filtered(metadata, prompts, None, None, None)
+    build_metadata_template_parts_filtered(metadata, prompts, None, None, None, None)
 }
 
 /// Like `build_metadata_template_parts` but only includes prompts whose IDs are in
@@ -3929,12 +4057,14 @@ fn build_metadata_template_parts(
 /// `delta_humans` overrides `metadata.humans` with per-commit-delta humans (only `h_<hash>`
 /// entries that appear in this commit's changed files). Passing `None` leaves metadata.humans
 /// unchanged (used for the initial/non-per-commit path).
+/// `delta_sessions` overrides `metadata.sessions` similarly.
 fn build_metadata_template_parts_filtered(
     metadata: &crate::authorship::authorship_log_serialization::AuthorshipMetadata,
     prompts: &BTreeMap<String, BTreeMap<String, crate::authorship::authorship_log::PromptRecord>>,
     active_ids: Option<&HashSet<String>>,
     original_commit: Option<&str>,
     delta_humans: Option<&BTreeMap<String, crate::authorship::authorship_log::HumanRecord>>,
+    delta_sessions: Option<&BTreeMap<String, crate::authorship::authorship_log::SessionRecord>>,
 ) -> Option<(String, String)> {
     let mut template_meta = metadata.clone();
     template_meta.base_commit_sha = "BASE_COMMIT_SHA_PLACEHOLDER".to_string();
@@ -3944,6 +4074,9 @@ fn build_metadata_template_parts_filtered(
     // An empty map serializes to nothing (humans field is skip_serializing_if = is_empty).
     if let Some(humans) = delta_humans {
         template_meta.humans = humans.clone();
+    }
+    if let Some(sessions) = delta_sessions {
+        template_meta.sessions = sessions.clone();
     }
     serde_json::to_string_pretty(&template_meta)
         .ok()
@@ -3992,7 +4125,8 @@ fn flatten_prompts_for_metadata_filtered(
         .collect()
 }
 
-fn build_file_attestation_from_line_attributions(
+#[doc(hidden)]
+pub fn build_file_attestation_from_line_attributions(
     file_path: &str,
     line_attrs: &[crate::authorship::attribution_tracker::LineAttribution],
 ) -> Option<crate::authorship::authorship_log_serialization::FileAttestation> {
@@ -4179,7 +4313,8 @@ fn compute_line_attrs_for_changed_file(
 /// - Inserted lines: no attribution (new content)
 /// - Deleted lines: dropped
 /// - Replaced lines: no attribution (content changed)
-fn diff_based_line_attribution_transfer(
+#[doc(hidden)]
+pub fn diff_based_line_attribution_transfer(
     old_content: &str,
     new_content: &str,
     old_line_attrs: &[crate::authorship::attribution_tracker::LineAttribution],
@@ -4298,31 +4433,46 @@ fn build_note_from_conflict_wl(
         }
 
         // Skip checkpoints without an agent_id: their line_attributions would
-        // reference an author_id not present in metadata.prompts, causing blame
-        // to fall back to human attribution.
+        // reference an author_id not present in metadata.prompts/sessions, causing
+        // blame to fall back to human attribution.
         let agent_id = match &checkpoint.agent_id {
             Some(id) => id,
             None => continue,
         };
 
-        let author_id = generate_short_hash(&agent_id.id, &agent_id.tool);
-
-        // Record the prompt from this AI checkpoint in the metadata.
-        authorship_log
-            .metadata
-            .prompts
-            .entry(author_id)
-            .or_insert_with(|| crate::authorship::authorship_log::PromptRecord {
-                agent_id: agent_id.clone(),
-                human_author: None,
-                messages: Vec::new(),
-                total_additions: checkpoint.line_stats.additions,
-                total_deletions: checkpoint.line_stats.deletions,
-                accepted_lines: 0,
-                overriden_lines: 0,
-                messages_url: None,
-                custom_attributes: None,
-            });
+        if checkpoint.trace_id.is_some() {
+            // New session format: generate session_id and record in metadata.sessions.
+            let session_id = crate::authorship::authorship_log_serialization::generate_session_id(
+                &agent_id.id,
+                &agent_id.tool,
+            );
+            authorship_log
+                .metadata
+                .sessions
+                .entry(session_id)
+                .or_insert_with(|| crate::authorship::authorship_log::SessionRecord {
+                    agent_id: agent_id.clone(),
+                    human_author: None,
+                    custom_attributes: None,
+                });
+        } else {
+            // Old prompt format: generate prompt hash and record in metadata.prompts.
+            let author_id = generate_short_hash(&agent_id.id, &agent_id.tool);
+            authorship_log
+                .metadata
+                .prompts
+                .entry(author_id)
+                .or_insert_with(|| crate::authorship::authorship_log::PromptRecord {
+                    agent_id: agent_id.clone(),
+                    human_author: None,
+                    total_additions: checkpoint.line_stats.additions,
+                    total_deletions: checkpoint.line_stats.deletions,
+                    accepted_lines: 0,
+                    overriden_lines: 0,
+                    custom_attributes: None,
+                    messages_url: None,
+                });
+        }
 
         for entry in &checkpoint.entries {
             if !changed_files.contains(&entry.file) {
@@ -4374,6 +4524,7 @@ fn build_authorship_log_from_state(
     base_commit_sha: &str,
     prompts: &BTreeMap<String, BTreeMap<String, crate::authorship::authorship_log::PromptRecord>>,
     humans: &BTreeMap<String, crate::authorship::authorship_log::HumanRecord>,
+    sessions: &BTreeMap<String, crate::authorship::authorship_log::SessionRecord>,
     attributions: &HashMap<
         String,
         (
@@ -4387,6 +4538,7 @@ fn build_authorship_log_from_state(
     authorship_log.metadata.base_commit_sha = base_commit_sha.to_string();
     authorship_log.metadata.prompts = flatten_prompts_for_metadata(prompts);
     authorship_log.metadata.humans = humans.clone();
+    authorship_log.metadata.sessions = sessions.clone();
 
     for (file_path, (_, line_attrs)) in attributions {
         if !existing_files.contains(file_path) {
@@ -4528,30 +4680,6 @@ fn add_prompt_line_metrics_for_line_attributions(
     }
 }
 
-#[allow(dead_code)]
-fn subtract_prompt_line_metrics_for_line_attributions(
-    metrics: &mut HashMap<String, PromptLineMetrics>,
-    line_attrs: &[crate::authorship::attribution_tracker::LineAttribution],
-) {
-    let human_id = crate::authorship::working_log::CheckpointKind::Human.to_str();
-    for line_attr in line_attrs {
-        let line_count = line_attr
-            .end_line
-            .saturating_sub(line_attr.start_line)
-            .saturating_add(1);
-        if line_attr.author_id != human_id
-            && let Some(entry) = metrics.get_mut(&line_attr.author_id)
-        {
-            entry.accepted_lines = entry.accepted_lines.saturating_sub(line_count);
-        }
-        if let Some(overrode_id) = &line_attr.overrode
-            && let Some(entry) = metrics.get_mut(overrode_id)
-        {
-            entry.overridden_lines = entry.overridden_lines.saturating_sub(line_count);
-        }
-    }
-}
-
 fn apply_prompt_line_metrics_to_prompts(
     prompts: &mut BTreeMap<
         String,
@@ -4569,7 +4697,8 @@ fn apply_prompt_line_metrics_to_prompts(
 }
 
 /// Transform VirtualAttributions to match a new final state (single-source variant)
-fn transform_attributions_to_final_state(
+#[doc(hidden)]
+pub fn transform_attributions_to_final_state(
     source_va: &crate::authorship::virtual_attribution::VirtualAttributions,
     final_state: HashMap<String, String>,
     original_head_state: Option<&crate::authorship::virtual_attribution::VirtualAttributions>,
@@ -4744,11 +4873,13 @@ fn transform_attributions_to_final_state(
         file_contents.insert(file_path, final_content);
     }
 
-    // Merge prompts from source VA and original_head_state, picking the newest version of each
+    // Merge prompts from source VA and original_head_state (source wins on conflict)
     let mut prompts = if let Some(original_state) = original_head_state {
-        crate::authorship::virtual_attribution::VirtualAttributions::merge_prompts_picking_newest(
-            &[source_va.prompts(), original_state.prompts()],
-        )
+        let mut merged = original_state.prompts().clone();
+        for (id, commits) in source_va.prompts() {
+            merged.insert(id.clone(), commits.clone());
+        }
+        merged
     } else {
         source_va.prompts().clone()
     };

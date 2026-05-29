@@ -1,5 +1,8 @@
 name: Test
 
+permissions:
+  contents: read
+
 on:
   workflow_dispatch:
   pull_request:
@@ -29,65 +32,42 @@ on:
     branches: [main]
 
 jobs:
+  compute-matrix:
+    name: Compute test matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          if [ "${{ github.event_name }}" = "merge_group" ]; then
+            echo 'matrix={"include":[{"os":"ubuntu-latest","test_mode":"daemon","test_threads":4,"daemon_pool":4},{"os":"ubuntu-latest","test_mode":"wrapper-daemon","test_threads":4,"daemon_pool":4},{"os":"macos-latest","test_mode":"daemon","test_threads":2,"daemon_pool":2},{"os":"macos-latest","test_mode":"wrapper-daemon","test_threads":2,"daemon_pool":2}]}' >> "$GITHUB_OUTPUT"
+          else
+            echo 'matrix={"include":[{"os":"ubuntu-latest","test_mode":"daemon","test_threads":4,"daemon_pool":4},{"os":"ubuntu-latest","test_mode":"wrapper-daemon","test_threads":4,"daemon_pool":4},{"os":"windows-latest","test_mode":"daemon","test_threads":4,"daemon_pool":4},{"os":"windows-latest","test_mode":"wrapper-daemon","test_threads":4,"daemon_pool":4},{"os":"macos-latest","test_mode":"daemon","test_threads":2,"daemon_pool":2},{"os":"macos-latest","test_mode":"wrapper-daemon","test_threads":2,"daemon_pool":2}]}' >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     name: Test on ${{ matrix.os }} (${{ matrix.test_mode }})
+    needs: compute-matrix
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            test_mode: wrapper
-            test_threads: 4
-            daemon_pool: 4
-          - os: ubuntu-latest
-            test_mode: daemon
-            test_threads: 4
-            daemon_pool: 4
-          - os: ubuntu-latest
-            test_mode: wrapper-daemon
-            test_threads: 4
-            daemon_pool: 4
-          - os: windows-latest
-            test_mode: wrapper
-            test_threads: 4
-            daemon_pool: 4
-          - os: windows-latest
-            test_mode: daemon
-            test_threads: 4
-            daemon_pool: 4
-          - os: windows-latest
-            test_mode: wrapper-daemon
-            test_threads: 4
-            daemon_pool: 4
-          - os: macos-latest
-            test_mode: wrapper
-            test_threads: 2
-            daemon_pool: 2
-          - os: macos-latest
-            test_mode: daemon
-            test_threads: 2
-            daemon_pool: 2
-          - os: macos-latest
-            test_mode: wrapper-daemon
-            test_threads: 2
-            daemon_pool: 2
+      matrix: ${{ fromJSON(needs.compute-matrix.outputs.matrix) }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           # submodules: true
           fetch-depth: 0
 
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
         with:
           toolchain: stable
-          override: true
 
       - name: Cache dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.cargo/registry
@@ -98,7 +78,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: '22'
 
@@ -132,19 +112,18 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           # submodules: true
           fetch-depth: 0
 
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
         with:
           toolchain: stable
-          override: true
 
       - name: Cache dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/.cargo/registry

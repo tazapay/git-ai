@@ -2,6 +2,7 @@ use dirs;
 use serde_json::Value;
 use std::collections::HashMap;
 
+use crate::config::NotesBackendKind;
 use crate::git::repository::find_repository_in_path;
 
 /// Determines the type of pattern value provided
@@ -85,51 +86,61 @@ fn resolve_path_to_remotes(path: &str) -> Result<Vec<String>, String> {
 }
 
 fn print_config_help() {
-    eprintln!("git-ai config - View and manage git-ai configuration");
-    eprintln!();
-    eprintln!("Usage:");
-    eprintln!("  git-ai config                Show all config as formatted JSON");
-    eprintln!("  git-ai config <key>          Show specific config value");
-    eprintln!("  git-ai config set <key> <value>          Set a config value");
-    eprintln!("  git-ai config set <key> <value> --add    Add to array (extends existing)");
-    eprintln!("  git-ai config --add <key> <value>        Add to array or upsert into object");
-    eprintln!("  git-ai config unset <key>    Remove config value (reverts to default)");
-    eprintln!();
-    eprintln!("Configuration Keys:");
-    eprintln!("  git_path                     Path to git binary");
-    eprintln!("  exclude_prompts_in_repositories  Repos to exclude prompts from (array)");
-    eprintln!("  allow_repositories           Allowed repos (array)");
-    eprintln!("  exclude_repositories         Excluded repos (array)");
-    eprintln!("  telemetry_oss                OSS telemetry setting (on/off)");
-    eprintln!("  telemetry_enterprise_dsn     Enterprise telemetry DSN");
-    eprintln!("  disable_version_checks       Disable version checks (bool)");
-    eprintln!("  disable_auto_updates         Disable auto updates (bool)");
-    eprintln!("  update_channel               Update channel (latest/next)");
-    eprintln!("  feature_flags                Feature flags (object)");
-    eprintln!("  api_key                      API key for X-API-Key header");
-    eprintln!("  prompt_storage               Prompt storage mode (default/notes/local)");
-    eprintln!("  include_prompts_in_repositories  Repos to include for prompt storage (array)");
-    eprintln!("  default_prompt_storage       Fallback storage mode for non-included repos");
-    eprintln!("  quiet                        Suppress chart output after commits (bool)");
-    eprintln!("  git_ai_hooks                 Hook name -> shell commands map (object)");
-    eprintln!();
-    eprintln!("Repository Patterns:");
-    eprintln!("  For exclude/allow/exclude_prompts_in_repositories, you can provide:");
-    eprintln!("    - A glob pattern: \"*\", \"https://github.com/org/*\"");
-    eprintln!("    - A URL/git protocol: \"git@github.com:org/repo.git\"");
-    eprintln!("    - A file path: \".\" or \"/path/to/repo\" (resolves to repo's remotes)");
-    eprintln!();
-    eprintln!("Examples:");
-    eprintln!("  git-ai config exclude_repositories");
-    eprintln!("  git-ai config set disable_auto_updates true");
-    eprintln!("  git-ai config set exclude_repositories \"private/*\"");
-    eprintln!("  git-ai config set exclude_repositories .         # Uses current repo's remotes");
-    eprintln!("  git-ai config --add exclude_repositories \"temp/*\"");
-    eprintln!("  git-ai config --add allow_repositories ~/projects/my-repo");
-    eprintln!("  git-ai config --add feature_flags.my_flag true");
-    eprintln!("  git-ai config --add git_ai_hooks.post_notes_updated \"./my-hook.sh\"");
-    eprintln!("  git-ai config unset exclude_repositories");
-    eprintln!();
+    println!("git-ai config - View and manage git-ai configuration");
+    println!();
+    println!("Usage:");
+    println!("  git-ai config                Show all config as formatted JSON");
+    println!("  git-ai config <key>          Show specific config value");
+    println!("  git-ai config set <key> <value>          Set a config value");
+    println!("  git-ai config set <key> <value> --add    Add to array (extends existing)");
+    println!("  git-ai config --add <key> <value>        Add to array or upsert into object");
+    println!("  git-ai config unset <key>    Remove config value (reverts to default)");
+    println!();
+    println!("Configuration Keys:");
+    println!("  git_path                     Path to git binary");
+    println!("  exclude_prompts_in_repositories  Repos to exclude prompts from (array)");
+    println!("  allow_repositories           Allowed repos (array)");
+    println!("  exclude_repositories         Excluded repos (array)");
+    println!("  telemetry_oss                OSS telemetry setting (on/off)");
+    println!("  telemetry_enterprise_dsn     Enterprise telemetry DSN");
+    println!("  disable_version_checks       Disable version checks (bool)");
+    println!("  disable_auto_updates         Disable auto updates (bool)");
+    println!("  update_channel               Update channel (latest/next)");
+    println!("  feature_flags                Feature flags (object)");
+    println!("  api_key                      API key for X-API-Key header");
+    println!("  prompt_storage               Prompt storage mode (default/notes/local)");
+    println!("  include_prompts_in_repositories  Repos to include for prompt storage (array)");
+    println!("  default_prompt_storage       Fallback storage mode for non-included repos");
+    println!("  quiet                        Suppress chart output after commits (bool)");
+    println!("  git_ai_hooks                 Hook name -> shell commands map (object)");
+    println!("  notes_backend.kind           Notes backend kind (git_notes/http)");
+    println!("  notes_backend.backend_url    Notes backend base URL. Required when kind=http.");
+    println!(
+        "                               May include a path prefix; endpoints are appended to it."
+    );
+    println!(
+        "                               e.g. \"https://app.example.com/api/gitai\" -> requests are"
+    );
+    println!("                               sent to \"<base>/worker/notes/upload\" and");
+    println!("                               \"<base>/worker/notes/?commits=...\".");
+    println!();
+    println!("Repository Patterns:");
+    println!("  For exclude/allow/exclude_prompts_in_repositories, you can provide:");
+    println!("    - A glob pattern: \"*\", \"https://github.com/org/*\"");
+    println!("    - A URL/git protocol: \"git@github.com:org/repo.git\"");
+    println!("    - A file path: \".\" or \"/path/to/repo\" (resolves to repo's remotes)");
+    println!();
+    println!("Examples:");
+    println!("  git-ai config exclude_repositories");
+    println!("  git-ai config set disable_auto_updates true");
+    println!("  git-ai config set exclude_repositories \"private/*\"");
+    println!("  git-ai config set exclude_repositories .         # Uses current repo's remotes");
+    println!("  git-ai config --add exclude_repositories \"temp/*\"");
+    println!("  git-ai config --add allow_repositories ~/projects/my-repo");
+    println!("  git-ai config --add feature_flags.my_flag true");
+    println!("  git-ai config --add git_ai_hooks.post_notes_updated \"./my-hook.sh\"");
+    println!("  git-ai config unset exclude_repositories");
+    println!();
     std::process::exit(0);
 }
 
@@ -173,6 +184,11 @@ pub fn handle_config(args: &[String]) {
             if let Err(e) = set_config_value(key, value, is_add_mode) {
                 eprintln!("Error: {}", e);
                 std::process::exit(1);
+            }
+            if key == "feature_flags.transcript_streaming"
+                || key == "feature_flags.transcript_sweep"
+            {
+                println!("Run `git-ai bg restart` for changes to take effect.");
             }
         }
         "unset" => {
@@ -324,6 +340,20 @@ fn show_all_config() -> Result<(), String> {
         effective_config.insert("api_key".to_string(), Value::String(masked));
     }
 
+    // notes_backend
+    {
+        let nb = runtime_config.notes_backend();
+        let mut nb_map = serde_json::Map::new();
+        nb_map.insert(
+            "kind".to_string(),
+            Value::String(nb.kind.as_str().to_string()),
+        );
+        if let Some(ref url) = nb.backend_url {
+            nb_map.insert("backend_url".to_string(), Value::String(url.clone()));
+        }
+        effective_config.insert("notes_backend".to_string(), Value::Object(nb_map));
+    }
+
     let json = serde_json::to_string_pretty(&effective_config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
 
@@ -403,6 +433,18 @@ fn get_config_value(key: &str) -> Result<(), String> {
             "quiet" => Value::Bool(runtime_config.is_quiet()),
             "git_ai_hooks" => serde_json::to_value(runtime_config.git_ai_hooks())
                 .unwrap_or_else(|_| Value::Object(serde_json::Map::new())),
+            "notes_backend" => {
+                let nb = runtime_config.notes_backend();
+                let mut map = serde_json::Map::new();
+                map.insert(
+                    "kind".to_string(),
+                    Value::String(nb.kind.as_str().to_string()),
+                );
+                if let Some(ref url) = nb.backend_url {
+                    map.insert("backend_url".to_string(), Value::String(url.clone()));
+                }
+                Value::Object(map)
+            }
             _ => return Err(format!("Unknown config key: {}", key)),
         };
 
@@ -435,7 +477,33 @@ fn get_config_value(key: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    Err("Nested keys are only supported for feature_flags and git_ai_hooks".to_string())
+    if key_path[0] == "notes_backend" {
+        if key_path.len() != 2 {
+            return Err(
+                "notes_backend requires a field name (notes_backend.kind or notes_backend.backend_url)"
+                    .to_string(),
+            );
+        }
+        let nb = runtime_config.notes_backend();
+        let value = match key_path[1].as_str() {
+            "kind" => Value::String(nb.kind.as_str().to_string()),
+            "backend_url" => nb
+                .backend_url
+                .as_ref()
+                .map(|u| Value::String(u.clone()))
+                .unwrap_or(Value::Null),
+            other => return Err(format!("Unknown notes_backend field: {}", other)),
+        };
+        let json = serde_json::to_string_pretty(&value)
+            .map_err(|e| format!("Failed to serialize value: {}", e))?;
+        println!("{}", json);
+        return Ok(());
+    }
+
+    Err(
+        "Nested keys are only supported for feature_flags, git_ai_hooks, and notes_backend"
+            .to_string(),
+    )
 }
 
 fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result<(), String> {
@@ -448,7 +516,7 @@ fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result<(), String
             "git_path" => {
                 file_config.git_path = Some(value.to_string());
                 crate::config::save_file_config(&file_config)?;
-                eprintln!("[git_path]: {}", value);
+                println!("[git_path]: {}", value);
             }
             "exclude_prompts_in_repositories" => {
                 let added = set_repository_array_field(
@@ -480,24 +548,24 @@ fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result<(), String
             "telemetry_oss" => {
                 file_config.telemetry_oss = Some(value.to_string());
                 crate::config::save_file_config(&file_config)?;
-                eprintln!("[telemetry_oss]: {}", value);
+                println!("[telemetry_oss]: {}", value);
             }
             "telemetry_enterprise_dsn" => {
                 file_config.telemetry_enterprise_dsn = Some(value.to_string());
                 crate::config::save_file_config(&file_config)?;
-                eprintln!("[telemetry_enterprise_dsn]: {}", value);
+                println!("[telemetry_enterprise_dsn]: {}", value);
             }
             "disable_version_checks" => {
                 let bool_value = parse_bool(value)?;
                 file_config.disable_version_checks = Some(bool_value);
                 crate::config::save_file_config(&file_config)?;
-                eprintln!("[disable_version_checks]: {}", bool_value);
+                println!("[disable_version_checks]: {}", bool_value);
             }
             "disable_auto_updates" => {
                 let bool_value = parse_bool(value)?;
                 file_config.disable_auto_updates = Some(bool_value);
                 crate::config::save_file_config(&file_config)?;
-                eprintln!("[disable_auto_updates]: {}", bool_value);
+                println!("[disable_auto_updates]: {}", bool_value);
             }
             "update_channel" => {
                 // Validate update channel
@@ -508,7 +576,7 @@ fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result<(), String
                 }
                 file_config.update_channel = Some(value.to_string());
                 crate::config::save_file_config(&file_config)?;
-                eprintln!("[update_channel]: {}", value);
+                println!("[update_channel]: {}", value);
             }
             "feature_flags" => {
                 if add_mode {
@@ -522,19 +590,19 @@ fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result<(), String
                 }
                 file_config.feature_flags = Some(json_value);
                 crate::config::save_file_config(&file_config)?;
-                eprintln!("[feature_flags]: {}", value);
+                println!("[feature_flags]: {}", value);
             }
             "api_key" => {
                 file_config.api_key = Some(value.to_string());
                 crate::config::save_file_config(&file_config)?;
                 let masked = mask_api_key(value);
-                eprintln!("[api_key]: {}", masked);
+                println!("[api_key]: {}", masked);
             }
             "prompt_storage" => {
                 validate_prompt_storage_value(value)?;
                 file_config.prompt_storage = Some(value.to_string());
                 crate::config::save_file_config(&file_config)?;
-                eprintln!("[prompt_storage]: {}", value);
+                println!("[prompt_storage]: {}", value);
             }
             "include_prompts_in_repositories" => {
                 let resolved = resolve_repository_value(value)?;
@@ -553,20 +621,20 @@ fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result<(), String
                 }
                 crate::config::save_file_config(&file_config)?;
                 for pattern in resolved {
-                    eprintln!("[include_prompts_in_repositories]: {}", pattern);
+                    println!("[include_prompts_in_repositories]: {}", pattern);
                 }
             }
             "default_prompt_storage" => {
                 validate_prompt_storage_value(value)?;
                 file_config.default_prompt_storage = Some(value.to_string());
                 crate::config::save_file_config(&file_config)?;
-                eprintln!("[default_prompt_storage]: {}", value);
+                println!("[default_prompt_storage]: {}", value);
             }
             "quiet" => {
                 let bool_value = parse_bool(value)?;
                 file_config.quiet = Some(bool_value);
                 crate::config::save_file_config(&file_config)?;
-                eprintln!("[quiet]: {}", bool_value);
+                println!("[quiet]: {}", bool_value);
             }
             "git_ai_hooks" => {
                 if add_mode {
@@ -574,7 +642,7 @@ fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result<(), String
                 }
                 file_config.git_ai_hooks = Some(parse_git_ai_hooks_object(value)?);
                 crate::config::save_file_config(&file_config)?;
-                eprintln!("[git_ai_hooks]: {}", value);
+                println!("[git_ai_hooks]: {}", value);
             }
             _ => return Err(format!("Unknown config key: {}", key)),
         }
@@ -628,7 +696,7 @@ fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result<(), String
 
         file_config.feature_flags = Some(flags);
         crate::config::save_file_config(&file_config)?;
-        eprintln!("+ [{}]: {}", nested_key, value);
+        println!("+ [{}]: {}", nested_key, value);
         return Ok(());
     }
 
@@ -651,7 +719,7 @@ fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result<(), String
             file_config.git_ai_hooks = Some(hooks);
             crate::config::save_file_config(&file_config)?;
             for command in commands_to_add {
-                eprintln!("+ [{}.{}]: {}", key_path[0], hook_name, command);
+                println!("+ [{}.{}]: {}", key_path[0], hook_name, command);
             }
         } else {
             let commands = parse_hook_command_values(value)?;
@@ -659,14 +727,45 @@ fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result<(), String
             file_config.git_ai_hooks = Some(hooks);
             crate::config::save_file_config(&file_config)?;
             for command in commands {
-                eprintln!("[{}.{}]: {}", key_path[0], hook_name, command);
+                println!("[{}.{}]: {}", key_path[0], hook_name, command);
             }
         }
 
         return Ok(());
     }
 
-    Err("Nested keys are only supported for feature_flags and git_ai_hooks".to_string())
+    if key_path[0] == "notes_backend" {
+        if key_path.len() != 2 {
+            return Err(
+                "notes_backend requires a field name (notes_backend.kind or notes_backend.backend_url)"
+                    .to_string(),
+            );
+        }
+        let field = key_path[1].as_str();
+        let mut backend = file_config.notes_backend.clone().unwrap_or_default();
+        match field {
+            "kind" => {
+                let kind = parse_notes_backend_kind(value)?;
+                backend.kind = kind;
+                file_config.notes_backend = Some(backend);
+                crate::config::save_file_config(&file_config)?;
+                eprintln!("[notes_backend.kind]: {}", kind.as_str());
+            }
+            "backend_url" => {
+                backend.backend_url = Some(value.to_string());
+                file_config.notes_backend = Some(backend);
+                crate::config::save_file_config(&file_config)?;
+                eprintln!("[notes_backend.backend_url]: {}", value);
+            }
+            other => return Err(format!("Unknown notes_backend field: {}", other)),
+        }
+        return Ok(());
+    }
+
+    Err(
+        "Nested keys are only supported for feature_flags, git_ai_hooks, and notes_backend"
+            .to_string(),
+    )
 }
 
 fn unset_config_value(key: &str) -> Result<(), String> {
@@ -680,7 +779,7 @@ fn unset_config_value(key: &str) -> Result<(), String> {
                 let old_value = file_config.git_path.take();
                 crate::config::save_file_config(&file_config)?;
                 if let Some(v) = old_value {
-                    eprintln!("- [git_path]: {}", v);
+                    println!("- [git_path]: {}", v);
                 }
             }
             "exclude_prompts_in_repositories" => {
@@ -708,84 +807,84 @@ fn unset_config_value(key: &str) -> Result<(), String> {
                 let old_value = file_config.telemetry_oss.take();
                 crate::config::save_file_config(&file_config)?;
                 if let Some(v) = old_value {
-                    eprintln!("- [telemetry_oss]: {}", v);
+                    println!("- [telemetry_oss]: {}", v);
                 }
             }
             "telemetry_enterprise_dsn" => {
                 let old_value = file_config.telemetry_enterprise_dsn.take();
                 crate::config::save_file_config(&file_config)?;
                 if let Some(v) = old_value {
-                    eprintln!("- [telemetry_enterprise_dsn]: {}", v);
+                    println!("- [telemetry_enterprise_dsn]: {}", v);
                 }
             }
             "disable_version_checks" => {
                 let old_value = file_config.disable_version_checks.take();
                 crate::config::save_file_config(&file_config)?;
                 if let Some(v) = old_value {
-                    eprintln!("- [disable_version_checks]: {}", v);
+                    println!("- [disable_version_checks]: {}", v);
                 }
             }
             "disable_auto_updates" => {
                 let old_value = file_config.disable_auto_updates.take();
                 crate::config::save_file_config(&file_config)?;
                 if let Some(v) = old_value {
-                    eprintln!("- [disable_auto_updates]: {}", v);
+                    println!("- [disable_auto_updates]: {}", v);
                 }
             }
             "update_channel" => {
                 let old_value = file_config.update_channel.take();
                 crate::config::save_file_config(&file_config)?;
                 if let Some(v) = old_value {
-                    eprintln!("- [update_channel]: {}", v);
+                    println!("- [update_channel]: {}", v);
                 }
             }
             "feature_flags" => {
                 let old_value = file_config.feature_flags.take();
                 crate::config::save_file_config(&file_config)?;
                 if let Some(v) = old_value {
-                    eprintln!("- [feature_flags]: {}", v);
+                    println!("- [feature_flags]: {}", v);
                 }
             }
             "api_key" => {
                 let old_value = file_config.api_key.take();
                 crate::config::save_file_config(&file_config)?;
                 if old_value.is_some() {
-                    eprintln!("- [api_key]: ****");
+                    println!("- [api_key]: ****");
                 }
             }
             "prompt_storage" => {
                 let old_value = file_config.prompt_storage.take();
                 crate::config::save_file_config(&file_config)?;
                 if let Some(v) = old_value {
-                    eprintln!("- [prompt_storage]: {}", v);
+                    println!("- [prompt_storage]: {}", v);
                 }
             }
             "include_prompts_in_repositories" => {
                 let old_value = file_config.include_prompts_in_repositories.take();
                 crate::config::save_file_config(&file_config)?;
                 if let Some(v) = old_value {
-                    eprintln!("- [include_prompts_in_repositories]: {:?}", v);
+                    println!("- [include_prompts_in_repositories]: {:?}", v);
                 }
             }
             "default_prompt_storage" => {
                 let old_value = file_config.default_prompt_storage.take();
                 crate::config::save_file_config(&file_config)?;
                 if let Some(v) = old_value {
-                    eprintln!("- [default_prompt_storage]: {}", v);
+                    println!("- [default_prompt_storage]: {}", v);
                 }
             }
             "quiet" => {
                 let old_value = file_config.quiet.take();
                 crate::config::save_file_config(&file_config)?;
                 if let Some(v) = old_value {
-                    eprintln!("- [quiet]: {}", v);
+                    println!("- [quiet]: {}", v);
                 }
             }
             "git_ai_hooks" => {
                 let old_value = file_config.git_ai_hooks.take();
                 crate::config::save_file_config(&file_config)?;
                 if let Some(v) = old_value {
-                    eprintln!("- [git_ai_hooks]: {:?}", v);
+                    println!("- [git_ai_hooks]: {:?}", v);
                 }
             }
             _ => return Err(format!("Unknown config key: {}", key)),
@@ -823,7 +922,7 @@ fn unset_config_value(key: &str) -> Result<(), String> {
             file_config.feature_flags = Some(flags);
             crate::config::save_file_config(&file_config)?;
             if let Some(v) = old_value {
-                eprintln!("- [{}]: {}", nested_key, v);
+                println!("- [{}]: {}", nested_key, v);
             }
         } else {
             // Deep nested key: feature_flags.parent.child...
@@ -841,7 +940,7 @@ fn unset_config_value(key: &str) -> Result<(), String> {
             file_config.feature_flags = Some(flags);
             crate::config::save_file_config(&file_config)?;
             if let Some(v) = old_value {
-                eprintln!("- [{}]: {}", nested_key, v);
+                println!("- [{}]: {}", nested_key, v);
             }
         }
 
@@ -870,13 +969,49 @@ fn unset_config_value(key: &str) -> Result<(), String> {
 
         if let Some(commands) = old_value {
             for command in commands {
-                eprintln!("- [{}]: {}", key, command);
+                println!("- [{}]: {}", key, command);
             }
         }
         return Ok(());
     }
 
-    Err("Nested keys are only supported for feature_flags and git_ai_hooks".to_string())
+    if key_path[0] == "notes_backend" {
+        if key_path.len() != 2 {
+            return Err(
+                "notes_backend requires a field name (notes_backend.kind or notes_backend.backend_url)"
+                    .to_string(),
+            );
+        }
+        let field = key_path[1].as_str();
+        let mut backend = file_config.notes_backend.clone().unwrap_or_default();
+        match field {
+            "kind" => {
+                let old = backend.kind;
+                backend.kind = NotesBackendKind::GitNotes; // reset to default
+                file_config.notes_backend = Some(backend);
+                crate::config::save_file_config(&file_config)?;
+                eprintln!("- [notes_backend.kind]: {}", old.as_str());
+            }
+            "backend_url" => {
+                if let Some(old_url) = backend.backend_url.take() {
+                    file_config.notes_backend = if backend.kind == NotesBackendKind::GitNotes {
+                        None // whole object is back to defaults, omit from file
+                    } else {
+                        Some(backend)
+                    };
+                    crate::config::save_file_config(&file_config)?;
+                    eprintln!("- [notes_backend.backend_url]: {}", old_url);
+                }
+            }
+            other => return Err(format!("Unknown notes_backend field: {}", other)),
+        }
+        return Ok(());
+    }
+
+    Err(
+        "Nested keys are only supported for feature_flags, git_ai_hooks, and notes_backend"
+            .to_string(),
+    )
 }
 
 fn parse_key_path(key: &str) -> Vec<String> {
@@ -957,11 +1092,11 @@ fn log_array_changes(items: &[String], add_mode: bool) {
     #[allow(clippy::if_same_then_else)]
     if add_mode {
         for item in items {
-            eprintln!("+ {}", item);
+            println!("+ {}", item);
         }
     } else {
         for item in items {
-            eprintln!("+ {}", item);
+            println!("+ {}", item);
         }
     }
 }
@@ -969,7 +1104,7 @@ fn log_array_changes(items: &[String], add_mode: bool) {
 /// Log array removals with - prefix
 fn log_array_removals(items: &[String]) {
     for item in items {
-        eprintln!("- {}", item);
+        println!("- {}", item);
     }
 }
 
@@ -1063,6 +1198,18 @@ fn mask_api_key(key: &str) -> String {
         format!("{}...{}", &key[..4], &key[key.len() - 4..])
     } else {
         "****".to_string()
+    }
+}
+
+/// Parse notes backend kind from a string value
+fn parse_notes_backend_kind(value: &str) -> Result<NotesBackendKind, String> {
+    match value.trim().to_lowercase().as_str() {
+        "git_notes" | "git-notes" => Ok(NotesBackendKind::GitNotes),
+        "http" => Ok(NotesBackendKind::Http),
+        _ => Err(format!(
+            "Invalid notes_backend.kind '{}'. Expected 'git_notes' or 'http'",
+            value
+        )),
     }
 }
 

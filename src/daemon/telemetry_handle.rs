@@ -1,6 +1,6 @@
 //! Global daemon telemetry handle for sending events over the control socket.
 //!
-//! When async_mode is enabled, this handle is initialized once on process start
+//! When daemon mode is active, this handle is initialized once on process start
 //! and used by the observability and metrics modules to route events through the
 //! daemon instead of writing to per-PID log files.
 //!
@@ -107,7 +107,7 @@ pub enum DaemonTelemetryInitResult {
 
 /// Initialize the global daemon telemetry handle.
 ///
-/// Should be called once on process start when `async_mode` is enabled.
+/// Should be called once on process start when daemon mode is active.
 /// Attempts to connect to the daemon control socket (starting the daemon if needed)
 /// with a 2-second timeout. The connection is kept open and reused for all
 /// subsequent telemetry and CAS submissions.
@@ -241,6 +241,16 @@ pub fn submit_cas(records: Vec<CasSyncPayload>) {
         return;
     }
     let request = ControlRequest::SubmitCas { records };
+    let _ = send_via_daemon(&request);
+}
+
+/// Signal the daemon that new notes are pending in `notes-db` and should be
+/// flushed to the remote backend.
+///
+/// Fire-and-forget: silently drops on failure (flush will happen on the next
+/// periodic tick regardless).
+pub fn submit_notes() {
+    let request = ControlRequest::FlushNotes;
     let _ = send_via_daemon(&request);
 }
 

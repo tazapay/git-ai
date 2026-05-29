@@ -97,16 +97,21 @@ Once installed, it automatically links every AI-written line to the agent, model
 **AI attribution on every commit:**
 
 `git commit`
+
 ```
 [hooks-doctor 0afe44b2] wsl compat check
- 2 files changed, 81 insertions(+), 3 deletions(-)
+2 files changed, 81 insertions(+), 3 deletions(-)
+```
+
+`git ai stats`
+```
 you  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ ai
      6%             mixed   2%             92%
 ```
 
 **AI Blame shows the model, agent, and session behind every line:**
 
-`git-ai blame /src/log_fmt/authorship_log.rs`
+`git ai blame /src/log_fmt/authorship_log.rs`
 ```bash
 
 cb832b7 (Aidan Cunniffe      2025-12-13 08:16:29 -0500  133) pub fn execute_diff(
@@ -174,35 +179,45 @@ That's it — **no per-repo setup required.** Prompt and commit as normal. Git A
 - **Git native and open standard** — Git AI built the [open standard](https://github.com/git-ai-project/git-ai/blob/main/specs/git_ai_standard_v3.0.0.md) for tracking AI-generated code with Git Notes.
 - **Secure Prompt Storage** — Git AI links each line of AI-code to the prompt that generated it. Since v1.0.0 Agent Sessions are stored outside of Git and can optionally be synced to your team's [cloud](https://usegitai.com/docs/platform/overview) or [self-hosted](https://usegitai.com/docs/platform/self-hosting) prompt store -- keeping repos lean, enabling fine-grained access control, and preventing PII or secrets from leaking into Git.
 
-### How Git AI works
-1. **`Edit|Write|Bash` Hooks** get triggered as Agents make changes to a repository
-2. **Hooks call `git-ai checkpoint`** to link each line of AI-Code to the model, Agent and prompt that generated it.
-3. **Post Commit** a Git Note with AI-attributions in it is attached to the commit
-4. **On `merge --squash`, `rebase`, `cherry-pick`, `stash`, `pop`, `commit --amend`, etc** AI-attributions are automatically moved 
 
-#### Example Note
-`refs/notes/ai/commit_sha`
-```
-hooks/post_clone_hook.rs
-  prompt_id_123 6-8
-  prompt_id_456 16,21,25
-main.rs
-  prompt_id_123 12-199,215,311
----
-...Prompt metadata including agent, model, and a link to the full session transcript
-```
+<table style="table-layout:fixed; width:100%">
+<tr>
+<th align="center" width="50%">Solo</th>
+<th align="center" width="50%">For Teams</th>
+</tr>
+<tr>
+<td align="center"><img src="https://github.com/git-ai-project/git-ai/blob/main/assets/docs/solo-player.svg" alt="Solo — everything stays on your machine" width="400"></td>
+<td align="center"><img src="https://github.com/git-ai-project/git-ai/blob/main/assets/docs/for-teams.svg" alt="For teams — shared context across your team" width="400"></td>
+</tr>
+<tr>
+<td valign="top">
 
-For more information [review Git AI's open standard for attributing AI-code with Git Notes](https://github.com/git-ai-project/git-ai/blob/main/specs/git_ai_standard_v3.0.0.md).
+- AI Authorship stored in Git Notes, with pointers to transcripts stored in local SQLite
+- Transcripts only stored locally, on computer
+- Measure AI authorship across commits with `git-ai stats`
+
+</td>
+<td valign="top">
+
+- AI Authorship stored in Git Notes
+- Pointers to cloud or self-hosted transcript store with built-in access control, secret redaction, and PII filtering
+- Agents and engineers can read transcripts and summaries for any block of AI-generated code
+- Advanced cross-agent dashboards to measure AI adoption, code durability, and compare agents across your team 
+
+**[Click here to get early access](https://calendly.com/d/cxjh-z79-ktm/meeting-with-git-ai-authors)**
+
+</td>
+</tr>
+</table>
 
 
----
 
 ## Attribution Stats
 
 Line-level AI-attribution let you track AI-code through the full SDLC. Track how much AI code gets accepted, committed, through code review, and into production — to identify which tools and practices work best.
 
 ```bash
-git-ai stats --json
+git ai stats --json
 git ai stats <start_sha>..<end_sha> --json
 ```
 
@@ -215,20 +230,14 @@ Calculates % AI-code, AI-lines generated vs committed, accepted rates, human ove
 ```json
 {
   "human_additions": 28,
-  "mixed_additions": 5,
   "ai_additions": 76,
   "ai_accepted": 47,
-  "total_ai_additions": 120,
-  "total_ai_deletions": 34,
-  "time_waiting_for_ai": 240,
+  "git_diff_deleted_lines": 34,
+  "git_diff_added_lines": 104,
   "tool_model_breakdown": {
     "claude_code/claude-sonnet-4-5-20250929": {
       "ai_additions": 76,
-      "mixed_additions": 5,
-      "ai_accepted": 47,
-      "total_ai_additions": 120,
-      "total_ai_deletions": 34,
-      "time_waiting_for_ai": 240
+      "ai_accepted": 47
     }
   }
 }
@@ -236,26 +245,12 @@ Calculates % AI-code, AI-lines generated vs committed, accepted rates, human ove
 
 </details>
 
-### For Teams
-
-[Git AI For Teams](https://usegitai.com/enterprise) aggregates attribution data at the PR, contributor, team repository, and organization level:
-
-- **Full lifecycle tracking** — See how much AI code is accepted, committed, rewritten in review, and deployed — and whether it causes alerts or incidents once shipped.
-- **Team and contributor stats** — Identify who uses background agents effectively and what high-leverage teams do differently.
-- **Agent readiness** — Measure the impact of skills, rules, MCPs, test harnesses, and `AGENTS.md` changes across repos and task types.
-
-<img  alt="new-graphic-dashboards" src="https://github.com/user-attachments/assets/1e2aec73-4e96-4531-ab5f-fe4deef2bbab" />
-
-[Set up your dashboards](https://usegitai.com/docs/platform/overview)
-
----
-
 ## AI Blame
 
 Git AI blame is a drop-in replacement for `git blame` that shows AI attribution for each line. It supports [all standard `git blame` flags](https://git-scm.com/docs/git-blame).
 
 ```bash
-git-ai blame /src/log_fmt/authorship_log.rs
+git ai blame /src/log_fmt/authorship_log.rs
 ```
 
 ```bash
@@ -327,12 +322,53 @@ Agents make fewer mistakes and produce more maintainable code when they understa
 </details>
 
 
+### How Git AI works
+1. **`Edit|Write|Bash` Hooks** get triggered as Agents make changes to a repository
+2. **Hooks call `git-ai checkpoint`** to link each line of AI-Code to the model, Agent and prompt that generated it.
+3. **Post Commit** a Git Note with AI-attributions in it is attached to the commit
+4. **On `merge --squash`, `rebase`, `cherry-pick`, `stash`, `pop`, `commit --amend`, etc** AI-attributions are automatically moved 
+
+#### Example Note
+`refs/notes/ai/commit_sha`
+```
+hooks/post_clone_hook.rs
+  prompt_id_123 6-8
+  prompt_id_456 16,21,25
+main.rs
+  prompt_id_123 12-199,215,311
+---
+...Prompt metadata including agent, model, and a link to the full session transcript
+```
+
+For more information [review Git AI's open standard for attributing AI-code with Git Notes](https://github.com/git-ai-project/git-ai/blob/main/specs/git_ai_standard_v3.0.0.md).
+
 ## Resources
 
 - [Config Options](https://usegitai.com/docs/cli/configuration)
 - [CLI Reference](https://usegitai.com/docs/cli/reference)
 - [How to measure the impact of coding agents](https://usegitai.com/how-to-measure-ai-code) 
 
+
+## For Teams
+
+[Git AI For Teams](https://usegitai.com/enterprise) aggregates attribution data at the PR, contributor, team repository, and organization level:
+
+- **Full lifecycle tracking** — See how much AI code is accepted, committed, rewritten in review, and deployed — and whether it causes alerts or incidents once shipped.  
+- **Team and contributor stats** — Identify who uses background agents effectively and what high-leverage teams do differently.  
+- **Agent readiness** — Measure the impact of skills, rules, MCPs, test harnesses, and `AGENTS.md` changes across repos and task types.  
+
+### Deployment Options
+
+Git AI is designed to run wherever your engineering organization operates:
+
+- **Self-hosted (recommended for enterprises)** — Deploy Git AI within your own infrastructure (AWS, VPC, on-prem). Full control over data, access, and integrations. Ideal for organizations with strict security, compliance, or data residency requirements.
+- **Git AI Cloud** — Fully managed hosting by Git AI. Faster setup, no infrastructure overhead, and automatic updates — best for teams that want to get started quickly.
+
+Both options support the same attribution model, dashboards, and integrations — choose based on your security and operational preferences.
+
+**[Get early access](https://calendly.com/d/cxjh-z79-ktm/meeting-with-git-ai-authors)**
+
+![new-graphic-dashboards](https://github.com/user-attachments/assets/1e2aec73-4e96-4531-ab5f-fe4deef2bbab)
 
 ## License
 Apache 2.0
