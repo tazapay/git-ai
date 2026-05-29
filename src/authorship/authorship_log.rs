@@ -542,4 +542,159 @@ mod tests {
             0.0
         );
     }
+
+    // --- recalculate_acceptance_rates tests ---
+
+    fn make_stats(ai_additions: u32, ai_accepted: u32) -> ContributorStats {
+        let mut s = ContributorStats {
+            ai_additions,
+            ai_accepted,
+            ..Default::default()
+        };
+        s.recalculate_acceptance_rates();
+        s
+    }
+
+    #[test]
+    fn test_rate_perfect_acceptance() {
+        // 4/4 = 100.0
+        assert_eq!(make_stats(4, 4).ai_acceptance_rate, 100.0);
+    }
+
+    #[test]
+    fn test_rate_zero_when_no_ai_additions() {
+        // 0 additions → rate is 0.0, no division
+        assert_eq!(make_stats(0, 0).ai_acceptance_rate, 0.0);
+    }
+
+    #[test]
+    fn test_rate_partial_acceptance() {
+        // 3/4 = 75.0
+        assert_eq!(make_stats(4, 3).ai_acceptance_rate, 75.0);
+    }
+
+    #[test]
+    fn test_rate_half_acceptance() {
+        // 1/2 = 50.0
+        assert_eq!(make_stats(2, 1).ai_acceptance_rate, 50.0);
+    }
+
+    #[test]
+    fn test_rate_two_thirds_rounds_to_two_decimals() {
+        // 2/3 * 100 = 66.666... → rounded to 66.67
+        assert_eq!(make_stats(3, 2).ai_acceptance_rate, 66.67);
+    }
+
+    #[test]
+    fn test_rate_non_trivial_two_decimals() {
+        // 59/90 = 65.555... → 65.56
+        assert_eq!(make_stats(90, 59).ai_acceptance_rate, 65.56);
+    }
+
+    #[test]
+    fn test_rate_tool_model_breakdown_recalculated() {
+        let mut s = ContributorStats {
+            ai_additions: 10,
+            ai_accepted: 10,
+            ..Default::default()
+        };
+        let tm = ToolModelContributorStats {
+            ai_additions: 3,
+            ai_accepted: 2,
+            ..Default::default()
+        };
+        // pre-condition: rate not yet set
+        assert_eq!(tm.ai_acceptance_rate, 0.0);
+        s.tool_model_breakdown
+            .insert("cursor::gpt-4o".to_string(), tm);
+        s.recalculate_acceptance_rates();
+
+        assert_eq!(s.ai_acceptance_rate, 100.0);
+        assert_eq!(
+            s.tool_model_breakdown["cursor::gpt-4o"].ai_acceptance_rate,
+            66.67
+        );
+    }
+
+    // --- ai_contribution_rate tests ---
+
+    fn make_stats_full(
+        ai_accepted: u32,
+        mixed_additions: u32,
+        manual_additions: u32,
+    ) -> ContributorStats {
+        let mut s = ContributorStats {
+            ai_accepted,
+            ai_additions: ai_accepted + mixed_additions,
+            mixed_additions,
+            manual_additions,
+            human_additions: manual_additions + mixed_additions,
+            ..Default::default()
+        };
+        s.recalculate_acceptance_rates();
+        s
+    }
+
+    #[test]
+    fn test_contribution_rate_pure_ai() {
+        // ai_accepted=10, human_additions=0 -> 10/10 = 100.0
+        let s = make_stats_full(10, 0, 0);
+        assert_eq!(s.ai_contribution_rate, 100.0);
+    }
+
+    #[test]
+    fn test_contribution_rate_pure_manual() {
+        // ai_accepted=0, human_additions=10 -> 0/10 = 0.0
+        let s = make_stats_full(0, 0, 10);
+        assert_eq!(s.ai_contribution_rate, 0.0);
+    }
+
+    #[test]
+    fn test_contribution_rate_mixed_lowers_ratio() {
+        // ai_accepted=50, mixed=20, manual=30 -> human_additions=50
+        // 50 / (50 + 50) = 50.0
+        let s = make_stats_full(50, 20, 30);
+        assert_eq!(s.ai_contribution_rate, 50.0);
+        // Sanity: ai_acceptance_rate treats mixed differently: 50/70 = 71.43
+        assert_eq!(s.ai_acceptance_rate, 71.43);
+    }
+
+    #[test]
+    fn test_contribution_rate_rounding() {
+        // ai_accepted=1, human_additions=2 -> 1/3 * 100 = 33.333... -> 33.33
+        let s = make_stats_full(1, 0, 2);
+        assert_eq!(s.ai_contribution_rate, 33.33);
+    }
+
+    #[test]
+    fn test_contribution_rate_zero_denominator() {
+        // Empty commit (all deletions): no additions at all
+        let mut s = ContributorStats::default();
+        s.recalculate_acceptance_rates();
+        assert_eq!(s.ai_contribution_rate, 0.0);
+    }
+
+    #[test]
+    fn test_rate_tool_model_zero_additions() {
+        let mut s = ContributorStats {
+            ai_additions: 0,
+            ai_accepted: 0,
+            ..Default::default()
+        };
+        s.tool_model_breakdown.insert(
+            "cursor::gpt-4o".to_string(),
+            ToolModelContributorStats {
+                ai_additions: 0,
+                ai_accepted: 0,
+                ..Default::default()
+            },
+        );
+        s.recalculate_acceptance_rates();
+
+        assert_eq!(s.ai_acceptance_rate, 0.0);
+        assert_eq!(
+            s.tool_model_breakdown["cursor::gpt-4o"].ai_acceptance_rate,
+            0.0
+        );
+    }
 }

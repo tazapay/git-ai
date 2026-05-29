@@ -69,7 +69,10 @@ AuthorshipLogV3 {
             },
         },
         humans: {},
+<<<<<<< HEAD
         sessions: {},
+=======
+>>>>>>> main
         contributors: None,
     },
 }

@@ -1500,7 +1500,10 @@ fn test_ci_rebase_merge_populates_contributors() {
     ctx.run_with_options(CiRunOptions {
         skip_fetch_notes: true,
         skip_fetch_base: true,
+<<<<<<< HEAD
         skip_push: false,
+=======
+>>>>>>> main
     })
     .expect("CiContext run should succeed");
 
@@ -1647,7 +1650,10 @@ fn test_ci_squash_merge_not_misdetected_as_rebase_on_branch_with_history() {
     ctx.run_with_options(CiRunOptions {
         skip_fetch_notes: true,
         skip_fetch_base: true,
+<<<<<<< HEAD
         skip_push: false,
+=======
+>>>>>>> main
     })
     .expect("CiContext run should succeed");
 
@@ -1762,7 +1768,10 @@ fn test_ci_rebase_merge_correctly_detected_on_branch_with_history() {
     ctx.run_with_options(CiRunOptions {
         skip_fetch_notes: true,
         skip_fetch_base: true,
+<<<<<<< HEAD
         skip_push: false,
+=======
+>>>>>>> main
     })
     .expect("CiContext run should succeed");
 
@@ -3236,6 +3245,10 @@ fn test_ci_squash_same_prompt_across_commits_accepted_and_overridden() {
                 model: commit2_record.agent_id.model.clone(),
             },
             human_author: Some("Test User <test@example.com>".to_string()),
+<<<<<<< HEAD
+=======
+            messages: vec![],
+>>>>>>> main
             total_additions: 1,
             total_deletions: 0,
             accepted_lines: 0,

@@ -1174,6 +1174,10 @@ mod tests {
             crate::authorship::authorship_log::PromptRecord {
                 agent_id,
                 human_author: Some("Alice <alice@example.com>".to_string()),
+<<<<<<< HEAD
+=======
+                messages: vec![],
+>>>>>>> main
                 total_additions: 10,
                 total_deletions: 0,
                 accepted_lines: 7,
@@ -1254,6 +1258,10 @@ mod tests {
             crate::authorship::authorship_log::PromptRecord {
                 agent_id,
                 human_author: None,
+<<<<<<< HEAD
+=======
+                messages: vec![],
+>>>>>>> main
                 total_additions: 5,
                 total_deletions: 0,
                 accepted_lines: 5,

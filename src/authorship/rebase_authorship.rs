@@ -643,11 +643,32 @@ pub fn rewrite_authorship_after_squash_or_rebase(
                 if !contributors.is_empty() {
                     authorship_log.metadata.contributors = Some(contributors);
                 }
+<<<<<<< HEAD
                 let authorship_json = authorship_log.serialize_to_string().map_err(|_| {
                     GitAiError::Generic("Failed to serialize authorship log".to_string())
                 })?;
                 notes_add(repo, merge_commit_sha, &authorship_json)?;
             }
+        } else {
+            // No authorship notes in source commits. Still build contributors
+            // to capture manual-only contributions from developers.
+            let contributors = build_contributors(repo, &source_commits, None);
+            if !contributors.is_empty() {
+                tracing::debug!("No AI notes but building contributors for manual contributions");
+                let mut authorship_log = AuthorshipLog::new();
+                authorship_log.metadata.base_commit_sha = merge_commit_sha.to_string();
+                authorship_log.metadata.contributors = Some(contributors);
+=======
+>>>>>>> main
+                let authorship_json = authorship_log.serialize_to_string().map_err(|_| {
+                    GitAiError::Generic("Failed to serialize authorship log".to_string())
+                })?;
+                crate::git::refs::notes_add(repo, merge_commit_sha, &authorship_json)?;
+            } else {
+                tracing::debug!("No files changed in merge, skipping authorship rewrite");
+            }
+<<<<<<< HEAD
+=======
         } else {
             // No authorship notes in source commits. Still build contributors
             // to capture manual-only contributions from developers.
@@ -664,6 +685,7 @@ pub fn rewrite_authorship_after_squash_or_rebase(
             } else {
                 tracing::debug!("No files changed in merge, skipping authorship rewrite");
             }
+>>>>>>> main
         }
         return Ok(());
     }
@@ -4941,8 +4963,13 @@ fn build_contributors_from_merged_log(
 ) -> BTreeMap<String, ContributorStats> {
     let mut contributors: HashMap<String, ContributorStats> = HashMap::new();
 
+<<<<<<< HEAD
     // Era B notes have empty prompts and populated sessions. Both must be handled.
     if merged_log.metadata.prompts.is_empty() && merged_log.metadata.sessions.is_empty() {
+=======
+    // Fall back to source-commit-based logic if the merged log has no prompts.
+    if merged_log.metadata.prompts.is_empty() {
+>>>>>>> main
         return BTreeMap::new();
     }
 
@@ -4950,6 +4977,7 @@ fn build_contributors_from_merged_log(
     // The merged_log may also contain prompts from the base branch (boundary entries
     // in blame). Those must be excluded to prevent double-counting when this squash
     // commit is later merged upstream via Priority 1.
+<<<<<<< HEAD
     let (source_prompt_ids, source_session_ids): (HashSet<String>, HashSet<String>) = {
         let mut prompt_ids = HashSet::new();
         let mut session_ids = HashSet::new();
@@ -4964,6 +4992,16 @@ fn build_contributors_from_merged_log(
     // Only filter when source notes are available; if notes push failed,
     // fall back to using all merged_log prompts/sessions rather than nothing.
     let filter_to_source = !source_prompt_ids.is_empty() || !source_session_ids.is_empty();
+=======
+    let source_prompt_ids: HashSet<String> = source_commits
+        .iter()
+        .filter_map(|sha| get_reference_as_authorship_log_v3(repo, sha).ok())
+        .flat_map(|log| log.metadata.prompts.into_keys())
+        .collect();
+    // Only filter when source notes are available; if notes push failed,
+    // fall back to using all merged_log prompts (VA-loaded) rather than nothing.
+    let filter_to_source = !source_prompt_ids.is_empty();
+>>>>>>> main
 
     // Get the commit author for fallback email resolution.
     // Use the last source commit as the representative author.
@@ -4972,6 +5010,7 @@ fn build_contributors_from_merged_log(
     let commit_author_name = get_commit_author_name(repo, representative_sha);
     let normalized_commit_email = normalize_email(&commit_author_email, noreply_normalizer);
 
+<<<<<<< HEAD
     // Prefer the final squash/rebase commit diff when available: merged_log
     // attestations are expressed in final-file line numbers, not source-commit
     // line numbers. Fall back to source commits for metadata-only logs.
@@ -4992,6 +5031,16 @@ fn build_contributors_from_merged_log(
     } else {
         get_per_file_added_lines_for_commits(repo, source_commits)
     };
+=======
+    // Sum git diff added lines across all source commits for manual line calculation.
+    // Skip merge commits — their diff against first parent includes the entire
+    // merged branch, which would massively inflate manual_additions.
+    let git_diff_added_lines: u32 = source_commits
+        .iter()
+        .filter(|sha| !is_merge_commit(repo, sha))
+        .map(|sha| get_commit_diff_added_lines(repo, sha))
+        .sum();
+>>>>>>> main
 
     let mut total_ai_accepted: u32 = 0;
     let mut total_mixed: u32 = 0;
@@ -5028,6 +5077,7 @@ fn build_contributors_from_merged_log(
         total_mixed += prompt.overriden_lines;
     }
 
+<<<<<<< HEAD
     // --- Era B (sessions-format) path ---
     // Sessions have no pre-computed accepted_lines; derive counts from attestations.
     if !merged_log.metadata.sessions.is_empty() {
@@ -5077,6 +5127,12 @@ fn build_contributors_from_merged_log(
         .saturating_sub(total_ai_accepted)
         .saturating_sub(total_mixed)
         .saturating_sub(total_known_human);
+=======
+    // Manual lines = raw git total - ai_accepted - mixed
+    let manual_for_commit = git_diff_added_lines
+        .saturating_sub(total_ai_accepted)
+        .saturating_sub(total_mixed);
+>>>>>>> main
 
     if manual_for_commit > 0 {
         let c = contributors.entry(normalized_commit_email).or_default();
@@ -5173,8 +5229,11 @@ fn build_contributors(
 
                 let mut total_ai_accepted: u32 = 0;
                 let mut total_mixed: u32 = 0;
+<<<<<<< HEAD
                 let per_file_added_lines =
                     get_per_file_added_lines_for_commits(repo, std::slice::from_ref(sha));
+=======
+>>>>>>> main
 
                 for prompt in note.metadata.prompts.values() {
                     let dev_email = resolve_contributor_email(
@@ -5205,6 +5264,7 @@ fn build_contributors(
                     total_mixed += prompt.overriden_lines;
                 }
 
+<<<<<<< HEAD
                 let total_known_human = add_known_human_contributors(
                     &mut contributors,
                     &note,
@@ -5296,6 +5356,19 @@ fn build_contributors(
                     c.manual_additions += manual_for_commit;
                     c.human_additions += manual_for_commit;
                 }
+=======
+                // Manual lines = raw git total - ai_accepted - mixed
+                let manual_for_commit = git_diff_added_lines
+                    .saturating_sub(total_ai_accepted)
+                    .saturating_sub(total_mixed);
+
+                let c = contributors.entry(normalized_commit_email).or_default();
+                if c.name.is_empty() {
+                    c.name = commit_author_name;
+                }
+                c.manual_additions += manual_for_commit;
+                c.human_additions += manual_for_commit;
+>>>>>>> main
 
                 continue;
             }
@@ -5475,6 +5548,7 @@ fn extract_github_username(email: &str) -> Option<String> {
     }
 }
 
+<<<<<<< HEAD
 fn add_author_identity_to_email_map(author: &str, name_to_email: &mut HashMap<String, String>) {
     if let Some(start) = author.find('<')
         && let Some(end) = author.find('>')
@@ -5488,6 +5562,8 @@ fn add_author_identity_to_email_map(author: &str, name_to_email: &mut HashMap<St
     }
 }
 
+=======
+>>>>>>> main
 /// Build email normalization maps by scanning notes and commit metadata across source commits.
 ///
 /// Returns `(noreply_normalizer, name_to_email)`:
@@ -5511,6 +5587,7 @@ fn build_email_normalizer(
                 }
             }
             for prompt in note.metadata.prompts.values() {
+<<<<<<< HEAD
                 if let Some(ref author) = prompt.human_author {
                     add_author_identity_to_email_map(author, &mut name_to_email);
                 }
@@ -5523,6 +5600,20 @@ fn build_email_normalizer(
             for human in note.metadata.humans.values() {
                 add_author_identity_to_email_map(&human.author, &mut name_to_email);
             }
+=======
+                if let Some(ref author) = prompt.human_author
+                    && let Some(start) = author.find('<')
+                    && let Some(end) = author.find('>')
+                    && start < end
+                {
+                    let email = author[start + 1..end].to_string();
+                    let name = author[..start].trim().to_lowercase();
+                    if !name.is_empty() {
+                        name_to_email.insert(name, email);
+                    }
+                }
+            }
+>>>>>>> main
         }
 
         // From commit metadata
@@ -5546,6 +5637,7 @@ fn build_email_normalizer(
     (noreply_normalizer, name_to_email)
 }
 
+<<<<<<< HEAD
 fn added_lines_from_commit_diff(repo: &Repository, commit_sha: &str) -> HashMap<String, Vec<u32>> {
     let parent_ref = {
         let mut args = repo.global_args_for_exec();
@@ -5732,6 +5824,8 @@ fn add_known_human_contributors(
     total_known_human
 }
 
+=======
+>>>>>>> main
 /// Normalize an email using the noreply lookup map.
 fn normalize_email(email: &str, normalizer: &HashMap<String, String>) -> String {
     normalizer
@@ -5743,6 +5837,7 @@ fn normalize_email(email: &str, normalizer: &HashMap<String, String>) -> String 
 #[cfg(test)]
 mod tests {
     use super::{
+<<<<<<< HEAD
         accepted_lines_by_human, accepted_lines_by_session,
         collect_changed_file_contents_from_diff, extract_github_username,
         get_pathspecs_from_commits, load_rebase_note_cache, normalize_email,
@@ -5750,6 +5845,13 @@ mod tests {
         resolve_contributor_email, rewrite_authorship_after_cherry_pick,
         transform_attributions_to_final_state, try_fast_path_rebase_note_remap_cached,
         walk_commits_to_base,
+=======
+        collect_changed_file_contents_from_diff, extract_github_username,
+        get_pathspecs_from_commits, normalize_email, parse_cat_file_batch_output_with_oids,
+        parse_name_from_human_author, resolve_contributor_email,
+        rewrite_authorship_after_cherry_pick, transform_attributions_to_final_state,
+        try_fast_path_rebase_note_remap, walk_commits_to_base,
+>>>>>>> main
     };
     use crate::authorship::attribution_tracker::{Attribution, LineAttribution};
     use crate::authorship::authorship_log::{LineRange, PromptRecord};
@@ -8137,6 +8239,7 @@ mod tests {
         // 2/3 * 100 = 66.666... → rounded to 66.67
         assert_eq!(stats.ai_acceptance_rate, 66.67);
     }
+<<<<<<< HEAD
 
     // Helper: build an AuthorshipLog with one file and given attestation entries.
     fn make_log_with_attestations(
@@ -8351,4 +8454,6 @@ mod tests {
             "sum of per-session accepted lines must match top-level ai_accepted (s_c1=4 + s_c2=1 = 5)"
         );
     }
+=======
+>>>>>>> main
 }
