@@ -1,0 +1,17 @@
+src/git/test_utils.rs
+  ai_agent 128-130,132,156-198
+src/authorship/rebase_authorship.rs
+  ai_agent 3754-3773
+tests/integration/ci_squash_rebase.rs
+  ai_agent 1503,1650,1765
+src/ci/ci_context.rs
+  ai_agent 9
+src/authorship/stats.rs
+  ai_agent 334,609
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "89ff3ec6f266968610dd5563a21f9878e66bad36",
+  "prompts": {}
+}
