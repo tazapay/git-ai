@@ -1,0 +1,12 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "452f839c1b2ea65d50a2de077e47151f34c7678c",
+  "prompts": {},
+  "humans": {
+    "h_e138945444558d": {
+      "author": "Hithesh <hithesh@tazapay.com>"
+    }
+  }
+}
