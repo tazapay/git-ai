@@ -3344,7 +3344,10 @@ fn test_generated_files_excluded_from_contributor_stats() {
         .metadata
         .contributors
         .expect("contributors must be populated");
-    let (_email, stats) = contributors.iter().next().expect("at least one contributor");
+    let (_email, stats) = contributors
+        .iter()
+        .next()
+        .expect("at least one contributor");
 
     // 3 real lines (handler.go); 20+10+3 generated lines must be excluded.
     assert_eq!(

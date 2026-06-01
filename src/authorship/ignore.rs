@@ -41,6 +41,8 @@ const DEFAULT_IGNORE_PATTERNS: &[&str] = &[
     "*.swagger.json",
     // Generated mock directories
     "**/mocks/gen/**",
+    // Migration data files
+    "*.csv",
 ];
 
 #[derive(Clone, Debug)]
@@ -424,6 +426,8 @@ mod tests {
         assert!(defaults.contains(&"*.swagger.json".to_string()));
         // Generated mock directories
         assert!(defaults.contains(&"**/mocks/gen/**".to_string()));
+        // Migration data files
+        assert!(defaults.contains(&"*.csv".to_string()));
     }
 
     #[test]
@@ -482,7 +486,10 @@ mod tests {
         assert!(!should_ignore_file_with_matcher("Objective.m", &matcher));
 
         // grpc-gateway generated
-        assert!(should_ignore_file_with_matcher("service.pb.gw.go", &matcher));
+        assert!(should_ignore_file_with_matcher(
+            "service.pb.gw.go",
+            &matcher
+        ));
         assert!(should_ignore_file_with_matcher(
             "proto/gen/payments.pb.gw.go",
             &matcher
@@ -512,6 +519,16 @@ mod tests {
         // mocks/ without /gen/ must not be caught
         assert!(!should_ignore_file_with_matcher(
             "mocks/mock_store.go",
+            &matcher
+        ));
+
+        // Migration data files
+        assert!(should_ignore_file_with_matcher(
+            "missed-transactions.csv",
+            &matcher
+        ));
+        assert!(should_ignore_file_with_matcher(
+            "migration/6_scripts/up/missed-transactions.csv",
             &matcher
         ));
     }
