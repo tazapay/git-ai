@@ -1,0 +1,14 @@
+src/authorship/ignore.rs
+  h_e138945444558d 33,40-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "585f4e2893fc6db8285e8f66b2cb45b0b03d7e48",
+  "prompts": {},
+  "humans": {
+    "h_e138945444558d": {
+      "author": "Hithesh <hithesh@tazapay.com>"
+    }
+  }
+}
