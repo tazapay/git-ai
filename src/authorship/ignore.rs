@@ -30,12 +30,17 @@ const DEFAULT_IGNORE_PATTERNS: &[&str] = &[
     "*.pbobjc.h",
     "*.pbobjc.m",
     "*.pb.go",
+    "*.pb.gw.go",
     "*.pb.h",
     "*.pb.cc",
     "*_pb2.py",
     "*_pb2_grpc.py",
     "*.pb.swift",
     "*.pb.dart",
+    // OpenAPI / Swagger generated
+    "*.swagger.json",
+    // Generated mock directories
+    "**/mocks/gen/**",
 ];
 
 #[derive(Clone, Debug)]
