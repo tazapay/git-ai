@@ -1,5 +1,9 @@
 use crate::authorship::authorship_log_serialization::AuthorshipLog;
+use crate::authorship::ignore::{
+    build_ignore_matcher, effective_ignore_patterns, should_ignore_file_with_matcher,
+};
 use crate::authorship::post_commit;
+use crate::commands::diff::get_diff_with_line_numbers;
 use crate::error::GitAiError;
 use crate::git::authorship_traversal::{
     commits_have_authorship_notes, load_ai_touched_files_for_commits,
@@ -9,8 +13,6 @@ use crate::git::notes_api::{
     read_note_blob_oids as note_blob_oids_for_commits, write_note as notes_add,
     write_notes_batch as notes_add_batch,
 };
-use crate::authorship::ignore::{build_ignore_matcher, effective_ignore_patterns, should_ignore_file_with_matcher};
-use crate::commands::diff::get_diff_with_line_numbers;
 use crate::git::repository::{CommitRange, Repository, exec_git, exec_git_stdin};
 use crate::git::rewrite_log::RewriteLogEvent;
 use std::collections::{BTreeMap, HashMap, HashSet};

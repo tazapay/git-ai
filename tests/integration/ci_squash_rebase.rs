@@ -3273,6 +3273,87 @@ fn test_ci_squash_same_prompt_across_commits_accepted_and_overridden() {
     );
 }
 
+/// Regression: generated files (.pb.go, .pb.gw.go, .swagger.json) must NOT be counted
+/// in contributor stats after a squash merge. Before the fix, the unfiltered diff helper
+/// included all 33 generated lines in `manual_additions`. After the fix, only the 3 real
+/// Go lines in handler.go are counted.
+#[test]
+fn test_generated_files_excluded_from_contributor_stats() {
+    use git_ai::authorship::rebase_authorship::rewrite_authorship_after_squash_or_rebase;
+    use git_ai::git::refs::get_reference_as_authorship_log_v3;
+    use git_ai::git::repository as GitAiRepository;
+    use std::fs;
+
+    let repo = direct_test_repo();
+
+    // Initial commit on main
+    let base_path = repo.path().join("base.go");
+    fs::write(&base_path, "package main\n").unwrap();
+    repo.git(&["add", "."]).unwrap();
+    repo.commit("initial").unwrap();
+    repo.git(&["branch", "-M", "main"]).unwrap();
+
+    // Feature branch: 3 real lines + 33 generated lines across 3 ignored file types
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+
+    fs::write(
+        repo.path().join("handler.go"),
+        "func A() {}\nfunc B() {}\nfunc C() {}\n", // 3 real lines
+    )
+    .unwrap();
+    fs::write(
+        repo.path().join("handler.pb.go"),
+        "// Code generated. DO NOT EDIT.\n".repeat(20), // 20 ignored lines
+    )
+    .unwrap();
+    fs::write(
+        repo.path().join("handler.pb.gw.go"),
+        "// grpc-gateway generated\n".repeat(10), // 10 ignored lines
+    )
+    .unwrap();
+    fs::write(
+        repo.path().join("api.swagger.json"),
+        "{\n\"swagger\": \"2.0\"\n}\n", // 3 ignored lines
+    )
+    .unwrap();
+
+    repo.git(&["add", "."]).unwrap();
+    let feature_sha = repo.commit("add handler").unwrap().commit_sha;
+
+    // Squash merge to main
+    repo.git(&["checkout", "main"]).unwrap();
+    repo.git(&["merge", "--squash", "feature"]).unwrap();
+    let merge_sha = repo.commit("squash: add handler").unwrap().commit_sha;
+
+    let git_ai_repo = GitAiRepository::find_repository_in_path(repo.path().to_str().unwrap())
+        .expect("repo must exist");
+
+    rewrite_authorship_after_squash_or_rebase(
+        &git_ai_repo,
+        "feature",
+        "main",
+        &feature_sha,
+        &merge_sha,
+        false,
+    )
+    .unwrap();
+
+    let note = get_reference_as_authorship_log_v3(&git_ai_repo, &merge_sha)
+        .expect("squash note must exist after rewrite");
+    let contributors = note
+        .metadata
+        .contributors
+        .expect("contributors must be populated");
+    let (_email, stats) = contributors.iter().next().expect("at least one contributor");
+
+    // 3 real lines (handler.go); 20+10+3 generated lines must be excluded.
+    assert_eq!(
+        stats.manual_additions, 3,
+        "manual_additions should be 3 (handler.go only); got {} — generated files likely counted",
+        stats.manual_additions
+    );
+}
+
 crate::reuse_tests_in_worktree!(
     test_ci_squash_merge_basic,
     test_ci_squash_merge_multiple_files,
@@ -3304,4 +3385,5 @@ crate::reuse_tests_in_worktree!(
     test_ci_squash_single_commit_all_change_types,
     test_ci_squash_two_tasks_merge_then_feature_to_main,
     test_ci_squash_same_prompt_across_commits_accepted_and_overridden,
+    test_generated_files_excluded_from_contributor_stats,
 );
