@@ -9,6 +9,8 @@ use crate::git::notes_api::{
     read_note_blob_oids as note_blob_oids_for_commits, write_note as notes_add,
     write_notes_batch as notes_add_batch,
 };
+use crate::authorship::ignore::{build_ignore_matcher, effective_ignore_patterns, should_ignore_file_with_matcher};
+use crate::commands::diff::get_diff_with_line_numbers;
 use crate::git::repository::{CommitRange, Repository, exec_git, exec_git_stdin};
 use crate::git::rewrite_log::RewriteLogEvent;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -4999,19 +5001,10 @@ fn build_contributors_from_merged_log(
     let merged_commit_sha = merged_log.metadata.base_commit_sha.as_str();
     let use_merged_commit_diff =
         !merged_commit_sha.is_empty() && !is_merge_commit(repo, merged_commit_sha);
-    let git_diff_added_lines: u32 = if use_merged_commit_diff {
-        get_commit_diff_added_lines(repo, merged_commit_sha)
+    let (per_file_added_lines, git_diff_added_lines) = if use_merged_commit_diff {
+        build_filtered_added_lines(repo, merged_commit_sha)
     } else {
-        source_commits
-            .iter()
-            .filter(|sha| !is_merge_commit(repo, sha))
-            .map(|sha| get_commit_diff_added_lines(repo, sha))
-            .sum()
-    };
-    let per_file_added_lines = if use_merged_commit_diff {
-        get_per_file_added_lines_for_commit(repo, merged_commit_sha)
-    } else {
-        get_per_file_added_lines_for_commits(repo, source_commits)
+        build_filtered_added_lines_for_commits(repo, source_commits)
     };
 
     let mut total_ai_accepted: u32 = 0;
@@ -5188,13 +5181,11 @@ fn build_contributors(
                 let commit_author_name = get_commit_author_name(repo, sha);
                 let normalized_commit_email =
                     normalize_email(&commit_author_email, &noreply_normalizer);
-                let git_diff_added_lines = if is_merge_commit(repo, sha) {
-                    0
+                let (per_file_added_lines, git_diff_added_lines) = if is_merge_commit(repo, sha) {
+                    (HashMap::new(), 0u32)
                 } else {
-                    get_commit_diff_added_lines(repo, sha)
+                    build_filtered_added_lines(repo, sha)
                 };
-                let per_file_added_lines =
-                    get_per_file_added_lines_for_commits(repo, std::slice::from_ref(sha));
 
                 let mut total_ai_accepted: u32 = 0;
                 let mut total_mixed: u32 = 0;
@@ -5263,13 +5254,11 @@ fn build_contributors(
                 let commit_author_name = get_commit_author_name(repo, sha);
                 let normalized_commit_email =
                     normalize_email(&commit_author_email, &noreply_normalizer);
-                let git_diff_added_lines = if is_merge_commit(repo, sha) {
-                    0
+                let (per_file_added_lines, git_diff_added_lines) = if is_merge_commit(repo, sha) {
+                    (HashMap::new(), 0u32)
                 } else {
-                    get_commit_diff_added_lines(repo, sha)
+                    build_filtered_added_lines(repo, sha)
                 };
-                let per_file_added_lines =
-                    get_per_file_added_lines_for_commits(repo, std::slice::from_ref(sha));
                 let session_lines = accepted_lines_by_session(&note, &per_file_added_lines);
                 let mut total_ai_accepted: u32 = 0;
 
@@ -5335,7 +5324,7 @@ fn build_contributors(
         let commit_author_email = get_commit_author_email(repo, sha);
         let commit_author_name = get_commit_author_name(repo, sha);
         let normalized_commit_email = normalize_email(&commit_author_email, &noreply_normalizer);
-        let git_diff_added_lines = get_commit_diff_added_lines(repo, sha);
+        let (_per_file, git_diff_added_lines) = build_filtered_added_lines(repo, sha);
 
         if git_diff_added_lines > 0 {
             let c = contributors.entry(normalized_commit_email).or_default();
@@ -5387,45 +5376,6 @@ fn get_commit_author_name(repo: &Repository, commit_sha: &str) -> String {
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_string())
         .unwrap_or_default()
-}
-
-/// Get the number of added lines for a single commit via `git diff --numstat`.
-fn get_commit_diff_added_lines(repo: &Repository, commit_sha: &str) -> u32 {
-    let parent_ref = {
-        let mut args = repo.global_args_for_exec();
-        args.extend_from_slice(&["rev-parse".to_string(), format!("{}^", commit_sha)]);
-        exec_git(&args)
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
-            .map(|s| s.trim().to_string())
-            // Empty tree for initial commits
-            .unwrap_or_else(|| "4b825dc642cb6eb9a060e54bf8d69288fbee4904".to_string())
-    };
-
-    let mut args = repo.global_args_for_exec();
-    args.extend_from_slice(&[
-        "diff".to_string(),
-        "--numstat".to_string(),
-        parent_ref,
-        commit_sha.to_string(),
-    ]);
-
-    let output = match exec_git(&args) {
-        Ok(o) => o,
-        Err(_) => return 0,
-    };
-    let stdout = String::from_utf8(output.stdout).unwrap_or_default();
-
-    let mut total = 0u32;
-    for line in stdout.lines() {
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() >= 2
-            && let Ok(added) = parts[0].parse::<u32>()
-        {
-            total += added;
-        }
-    }
-    total
 }
 
 /// Check whether a commit is a merge commit (has 2+ parents).
@@ -5587,9 +5537,20 @@ fn build_email_normalizer(
     (noreply_normalizer, name_to_email)
 }
 
-/// Parse `git diff -U0` output for a single commit and return per-file added line numbers.
-fn added_lines_from_commit_diff(repo: &Repository, commit_sha: &str) -> HashMap<String, Vec<u32>> {
-    let parent_ref = {
+/// Build ignore-filtered, deduplicated per-file added-line map for a single commit.
+///
+/// Uses the same diff engine (`get_diff_with_line_numbers` with `--find-renames=1%`) and
+/// the same ignore pipeline (`effective_ignore_patterns`) as `stats.rs`, so contributor
+/// totals and top-level stats agree on every commit.
+///
+/// Returns `(per_file_added_lines, total_added_lines)`.
+/// On git error, returns `(empty, 0)` and emits a debug log — no silent zeroing.
+fn build_filtered_added_lines(
+    repo: &Repository,
+    commit_sha: &str,
+) -> (HashMap<String, Vec<u32>>, u32) {
+    // Resolve first parent; fall back to empty-tree SHA for root commits.
+    let parent_sha = {
         let mut args = repo.global_args_for_exec();
         args.extend_from_slice(&["rev-parse".to_string(), format!("{}^", commit_sha)]);
         exec_git(&args)
@@ -5598,75 +5559,76 @@ fn added_lines_from_commit_diff(repo: &Repository, commit_sha: &str) -> HashMap<
             .map(|s| s.trim().to_string())
             .unwrap_or_else(|| "4b825dc642cb6eb9a060e54bf8d69288fbee4904".to_string())
     };
-    let mut args = repo.global_args_for_exec();
-    args.extend_from_slice(&[
-        "diff".to_string(),
-        "-U0".to_string(),
-        "--no-color".to_string(),
-        parent_ref,
-        commit_sha.to_string(),
-    ]);
-    let output = match exec_git(&args) {
-        Ok(o) => String::from_utf8(o.stdout).unwrap_or_default(),
-        Err(_) => return HashMap::new(),
+
+    let hunks = match get_diff_with_line_numbers(repo, &parent_sha, commit_sha) {
+        Ok(h) => h,
+        Err(e) => {
+            tracing::debug!(
+                "[git-ai] build_filtered_added_lines: git diff failed for {}: {:?}",
+                commit_sha,
+                e
+            );
+            return (HashMap::new(), 0);
+        }
     };
 
+    // Load the same effective patterns as stats.rs: defaults + linguist-generated
+    // (.gitattributes) + per-repo .git-ai-ignore. No user/extra patterns here.
+    let patterns = effective_ignore_patterns(repo, &[], &[]);
+    let matcher = build_ignore_matcher(&patterns);
+
     let mut per_file: HashMap<String, Vec<u32>> = HashMap::new();
-    let mut current_file: Option<String> = None;
-    for line in output.lines() {
-        if let Some(path) = line.strip_prefix("+++ b/") {
-            current_file = Some(path.to_string());
-        } else if line.starts_with("@@")
-            && let (Some(file), Some(hunk)) = (current_file.as_ref(), parse_hunk_header(line))
-            && hunk.new_count > 0
-        {
-            let lines = per_file.entry(file.clone()).or_default();
-            for n in 0..hunk.new_count {
-                lines.push(hunk.new_start + n);
-            }
+    let mut total_added: u32 = 0;
+
+    for hunk in &hunks {
+        if should_ignore_file_with_matcher(&hunk.file_path, &matcher) {
+            continue;
+        }
+        total_added += hunk.added_lines.len() as u32;
+        if !hunk.added_lines.is_empty() {
+            per_file
+                .entry(hunk.file_path.clone())
+                .or_default()
+                .extend(hunk.added_lines.iter().copied());
         }
     }
-    per_file
-}
 
-fn merge_added_lines(into: &mut HashMap<String, Vec<u32>>, from: HashMap<String, Vec<u32>>) {
-    for (file, mut lines) in from {
-        into.entry(file).or_default().append(&mut lines);
-    }
-}
-
-fn dedupe_added_lines(per_file: &mut HashMap<String, Vec<u32>>) {
+    // Sort and dedup — identical to stats.rs lines 546-549.
     for lines in per_file.values_mut() {
         lines.sort_unstable();
         lines.dedup();
     }
+
+    (per_file, total_added)
 }
 
-/// Get per-file added line numbers for a single commit.
-fn get_per_file_added_lines_for_commit(
-    repo: &Repository,
-    commit_sha: &str,
-) -> HashMap<String, Vec<u32>> {
-    let mut per_file = added_lines_from_commit_diff(repo, commit_sha);
-    dedupe_added_lines(&mut per_file);
-    per_file
-}
-
-/// Get per-file added line numbers by summing diffs across multiple source commits.
-/// Skips merge commits — their diff vs first parent inflates line counts.
-fn get_per_file_added_lines_for_commits(
+/// Merge `build_filtered_added_lines` across multiple source commits.
+/// Skips merge commits — their diff vs first parent inflates counts.
+fn build_filtered_added_lines_for_commits(
     repo: &Repository,
     source_commits: &[String],
-) -> HashMap<String, Vec<u32>> {
-    let mut per_file: HashMap<String, Vec<u32>> = HashMap::new();
+) -> (HashMap<String, Vec<u32>>, u32) {
+    let mut merged: HashMap<String, Vec<u32>> = HashMap::new();
+    let mut total: u32 = 0;
+
     for sha in source_commits {
         if is_merge_commit(repo, sha) {
             continue;
         }
-        merge_added_lines(&mut per_file, added_lines_from_commit_diff(repo, sha));
+        let (per_file, added) = build_filtered_added_lines(repo, sha);
+        total = total.saturating_add(added);
+        for (file, mut lines) in per_file {
+            merged.entry(file).or_default().append(&mut lines);
+        }
     }
-    dedupe_added_lines(&mut per_file);
-    per_file
+
+    // Dedup after merging across commits.
+    for lines in merged.values_mut() {
+        lines.sort_unstable();
+        lines.dedup();
+    }
+
+    (merged, total)
 }
 
 /// Count lines attested to each session (s_-prefix), intersected with actually-added lines.
