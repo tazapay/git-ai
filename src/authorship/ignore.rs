@@ -30,12 +30,19 @@ const DEFAULT_IGNORE_PATTERNS: &[&str] = &[
     "*.pbobjc.h",
     "*.pbobjc.m",
     "*.pb.go",
+    "*.pb.gw.go",
     "*.pb.h",
     "*.pb.cc",
     "*_pb2.py",
     "*_pb2_grpc.py",
     "*.pb.swift",
     "*.pb.dart",
+    // OpenAPI / Swagger generated
+    "*.swagger.json",
+    // Generated mock directories
+    "**/mocks/gen/**",
+    // Migration data files
+    "*.csv",
 ];
 
 #[derive(Clone, Debug)]
@@ -404,6 +411,7 @@ mod tests {
         assert!(defaults.contains(&"*.pbobjc.m".to_string()));
         // Go protobuf
         assert!(defaults.contains(&"*.pb.go".to_string()));
+        assert!(defaults.contains(&"*.pb.gw.go".to_string()));
         // C++ protobuf
         assert!(defaults.contains(&"*.pb.h".to_string()));
         assert!(defaults.contains(&"*.pb.cc".to_string()));
@@ -414,6 +422,12 @@ mod tests {
         assert!(defaults.contains(&"*.pb.swift".to_string()));
         // Dart protobuf
         assert!(defaults.contains(&"*.pb.dart".to_string()));
+        // OpenAPI / Swagger
+        assert!(defaults.contains(&"*.swagger.json".to_string()));
+        // Generated mock directories
+        assert!(defaults.contains(&"**/mocks/gen/**".to_string()));
+        // Migration data files
+        assert!(defaults.contains(&"*.csv".to_string()));
     }
 
     #[test]
@@ -470,5 +484,52 @@ mod tests {
         assert!(!should_ignore_file_with_matcher("app.swift", &matcher));
         assert!(!should_ignore_file_with_matcher("widget.dart", &matcher));
         assert!(!should_ignore_file_with_matcher("Objective.m", &matcher));
+
+        // grpc-gateway generated
+        assert!(should_ignore_file_with_matcher(
+            "service.pb.gw.go",
+            &matcher
+        ));
+        assert!(should_ignore_file_with_matcher(
+            "proto/gen/payments.pb.gw.go",
+            &matcher
+        ));
+
+        // OpenAPI / Swagger generated
+        assert!(should_ignore_file_with_matcher(
+            "payments.swagger.json",
+            &matcher
+        ));
+        assert!(should_ignore_file_with_matcher(
+            "api/payments.swagger.json",
+            &matcher
+        ));
+        // config.json is not a swagger file — must not be caught
+        assert!(!should_ignore_file_with_matcher("config.json", &matcher));
+
+        // Generated mock directories
+        assert!(should_ignore_file_with_matcher(
+            "mocks/gen/mock_store.go",
+            &matcher
+        ));
+        assert!(should_ignore_file_with_matcher(
+            "service/mocks/gen/mock_repo.go",
+            &matcher
+        ));
+        // mocks/ without /gen/ must not be caught
+        assert!(!should_ignore_file_with_matcher(
+            "mocks/mock_store.go",
+            &matcher
+        ));
+
+        // Migration data files
+        assert!(should_ignore_file_with_matcher(
+            "missed-transactions.csv",
+            &matcher
+        ));
+        assert!(should_ignore_file_with_matcher(
+            "migration/6_scripts/up/missed-transactions.csv",
+            &matcher
+        ));
     }
 }
