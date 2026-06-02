@@ -3387,6 +3387,13 @@ crate::reuse_tests_in_worktree!(
     test_ci_squash_four_commits_all_change_types,
     test_ci_squash_single_commit_all_change_types,
     test_ci_squash_two_tasks_merge_then_feature_to_main,
-    test_ci_squash_same_prompt_across_commits_accepted_and_overridden,
     test_generated_files_excluded_from_contributor_stats,
+);
+
+// Ignored Era A test — the worktree variant must also be ignored. The plain
+// `reuse_tests_in_worktree!` macro does not propagate `#[ignore]`, so generate
+// this variant via the `_with_attrs` macro instead.
+crate::reuse_tests_in_worktree_with_attrs!(
+    (#[ignore])
+    test_ci_squash_same_prompt_across_commits_accepted_and_overridden,
 );

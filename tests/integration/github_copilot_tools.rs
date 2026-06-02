@@ -114,13 +114,13 @@ fn test_copilot_cli_edit_tool_attribution() {
     let repo = TestRepo::new();
 
     // Create initial file with raw I/O
-    let file_path = repo.path().join("jokes.csv");
+    let file_path = repo.path().join("jokes.txt");
     std::fs::write(
         &file_path,
         "id,setup,punchline\n1,Why do programmers prefer dark mode?,Because light attracts bugs.\n2,Why did the developer go broke?,Because he used up all his cache.\n",
     )
     .unwrap();
-    repo.git(&["add", "jokes.csv"]).unwrap();
+    repo.git(&["add", "jokes.txt"]).unwrap();
     repo.git(&["commit", "-m", "Initial jokes"]).unwrap();
 
     let session_id = "ec663931-ecc5-45ce-bb5a-b4058a74b344";
@@ -183,14 +183,14 @@ fn test_copilot_cli_edit_tool_attribution() {
     // Sync daemon before assertions
     repo.sync_daemon();
 
-    repo.git(&["add", "jokes.csv"]).unwrap();
+    repo.git(&["add", "jokes.txt"]).unwrap();
     repo.git(&["commit", "-m", "Add joke via copilot CLI edit"])
         .unwrap();
 
     repo.sync_daemon();
 
     // AI-added line should be attributed to AI
-    let mut file = repo.filename("jokes.csv");
+    let mut file = repo.filename("jokes.txt");
     file.assert_lines_and_blame(crate::lines![
         "id,setup,punchline".human(),
         "1,Why do programmers prefer dark mode?,Because light attracts bugs.".human(),
