@@ -1,0 +1,33 @@
+tests/integration/ci_squash_rebase.rs
+  h_e138945444558d 1658,2498,2505,3078-3079,3393
+src/authorship/rebase_authorship.rs
+  s_f4e052d7783df0::t_f8db2d7ec42e32 5250
+  s_f4e052d7783df0::t_7ee77af89cd13c 8158
+  s_f4e052d7783df0::t_64f3102af11620 5490
+  s_f4e052d7783df0::t_1527f4b2f23128 5045-5046
+  s_f4e052d7783df0::t_75a7619040b8e1 8191
+  s_f4e052d7783df0::t_241840b6acd484 8200
+  h_e138945444558d 8217,8220,8240,8245
+  s_f4e052d7783df0::t_a36de738b25ad0 4968
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "df85981d0fef4f3a2bae4c10648ee2174f4c9a92",
+  "prompts": {},
+  "humans": {
+    "h_e138945444558d": {
+      "author": "Hithesh <hithesh@tazapay.com>"
+    }
+  },
+  "sessions": {
+    "s_f4e052d7783df0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5bd7cd2a-358e-4536-a83e-a4fccdbc5c2b",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Hithesh <hithesh@tazapay.com>"
+    }
+  }
+}
