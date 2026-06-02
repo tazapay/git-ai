@@ -1655,7 +1655,7 @@ fn test_ci_squash_merge_not_misdetected_as_rebase_on_branch_with_history() {
     let squash_log = get_reference_as_authorship_log_v3(&git_ai_repo, &squash_sha)
         .expect("Squash commit should have authorship log");
 
-    // Era B notes use sessions instead of prompts — check combined count.
+    // Session-format notes use sessions instead of prompts — check combined count.
     let attribution_count = squash_log.metadata.prompts.len() + squash_log.metadata.sessions.len();
     assert!(
         attribution_count >= 2,
@@ -2495,14 +2495,14 @@ fn test_ci_squash_merge_prompt_from_source_when_va_has_attestation() {
     let squash_log = get_reference_as_authorship_log_v3(&git_ai_repo, &merge_commit.commit_sha)
         .expect("Squash commit should have authorship log");
 
-    // Era B notes use sessions instead of prompts — accept either format.
+    // Session-format notes use sessions instead of prompts — accept either format.
     assert!(
         !squash_log.metadata.prompts.is_empty() || !squash_log.metadata.sessions.is_empty(),
         "Squash commit should have attribution data (prompts or sessions) recovered from source commits."
     );
 
     // Each attestation entry's hash should exist in the prompts or sessions map
-    // (no orphaned attestation references). s_-prefixed hashes are Era B session keys.
+    // (no orphaned attestation references). s_-prefixed hashes are Session-format session keys.
     for file_attestation in &squash_log.attestations {
         for entry in &file_attestation.entries {
             assert!(
@@ -3075,8 +3075,8 @@ fn test_ci_squash_two_tasks_merge_then_feature_to_main() {
 /// Case 5: Same prompt ID across multiple source commits — one accepted, one overridden.
 /// Reproduces the bug where h_ false positives and real overrides numerically mask
 /// each other (both = 1), causing the h_ fix to not trigger and accepted_lines = 0.
-/// NOTE: Ignored — tests Era A "shared prompt across commits" which doesn't apply to
-/// Era B (v1.4.x+) notes where mock_ai writes sessions, not prompts.
+/// NOTE: Ignored — tests Prompt-format "shared prompt across commits" which doesn't apply to
+/// Session-format (v1.4.x+) notes where mock_ai writes sessions, not prompts.
 #[test]
 #[ignore]
 fn test_ci_squash_same_prompt_across_commits_accepted_and_overridden() {
@@ -3390,7 +3390,7 @@ crate::reuse_tests_in_worktree!(
     test_generated_files_excluded_from_contributor_stats,
 );
 
-// Ignored Era A test — the worktree variant must also be ignored. The plain
+// Ignored Prompt-format test — the worktree variant must also be ignored. The plain
 // `reuse_tests_in_worktree!` macro does not propagate `#[ignore]`, so generate
 // this variant via the `_with_attrs` macro instead.
 crate::reuse_tests_in_worktree_with_attrs!(

@@ -4965,7 +4965,7 @@ fn build_contributors_from_merged_log(
 ) -> BTreeMap<String, ContributorStats> {
     let mut contributors: HashMap<String, ContributorStats> = HashMap::new();
 
-    // Era A notes populate `prompts`; Era B notes (git-ai v1.4.x+) populate `sessions` instead.
+    // Prompt-format notes populate `prompts`; session-format notes (git-ai v1.4.x+) populate `sessions` instead.
     // Only bail out when both are empty — i.e., no AI attribution data at all.
     // Previously this check was `prompts.is_empty()` alone, which caused ai_additions = 0
     // for every PR using the new sessions format.
@@ -5042,8 +5042,8 @@ fn build_contributors_from_merged_log(
         total_mixed += prompt.overriden_lines;
     }
 
-    // --- Era B (sessions-format) path ---
-    // In Era B notes, `sessions` replaces `prompts`. SessionRecord has no pre-computed
+    // --- Session-format path ---
+    // In session-format notes, `sessions` replaces `prompts`. SessionRecord has no pre-computed
     // accepted_lines, so we derive the count by intersecting the note's attestation
     // line ranges (s_xxx::t_yyy entries) with the actually-added lines from the git diff.
     if !merged_log.metadata.sessions.is_empty() {
@@ -5247,7 +5247,7 @@ fn build_contributors(
                 continue;
             }
 
-            // Priority 2b: Era B notes — sessions populated, prompts empty.
+            // Priority 2b: Session-format notes — sessions populated, prompts empty.
             // git-ai v1.4.x+ writes sessions instead of prompts. We derive line counts
             // from the attestation section (s_xxx::t_yyy entries) the same way
             // accepted_lines_by_session() does for the merged log in Priority 0.
@@ -5487,7 +5487,7 @@ fn build_email_normalizer(
                     }
                 }
             }
-            // Era B notes have no prompts, so also scan sessions and humans.
+            // Session-format notes have no prompts, so also scan sessions and humans.
             // Without this, GitHub noreply emails (e.g. 12345+alice@users.noreply.github.com)
             // won't be mapped to corporate emails for session/human authors.
             for session in note.metadata.sessions.values() {
@@ -8155,7 +8155,7 @@ mod tests {
         }
     }
 
-    // ── Test 1: Era B note with only sessions — must produce non-zero ai count ──
+    // ── Test 1: Session-format note with only sessions — must produce non-zero ai count ──
 
     #[test]
     fn test_build_contributors_era_b_sessions_only() {
@@ -8188,7 +8188,7 @@ mod tests {
         assert_eq!(result.get("s_aaa").copied().unwrap_or(0), 3);
     }
 
-    // ── Test 2: Era A note with only prompts — existing behaviour must not regress ──
+    // ── Test 2: Prompt-format note with only prompts — existing behaviour must not regress ──
 
     #[test]
     fn test_build_contributors_era_a_prompts_only_still_works() {
@@ -8197,7 +8197,7 @@ mod tests {
             AttestationEntry, AuthorshipLog, AuthorshipMetadata, FileAttestation,
         };
 
-        // Prompt hash has no s_ prefix (Era A format)
+        // Prompt hash has no s_ prefix (prompt-format)
         let mut file_att = FileAttestation::new("src/main.rs".to_string());
         file_att.add_entry(AttestationEntry::new(
             "abc123promothash".to_string(),
@@ -8214,10 +8214,10 @@ mod tests {
 
         let result = accepted_lines_by_session(&log, &per_file);
 
-        // No s_ entries → session result must be empty; Era A path is unaffected
+        // No s_ entries → session result must be empty; Prompt-format path is unaffected
         assert!(
             result.is_empty(),
-            "Era A prompt hashes must not appear in session result"
+            "Prompt-format hashes must not appear in session result"
         );
     }
 
@@ -8237,12 +8237,12 @@ mod tests {
         );
 
         let mut file_att = FileAttestation::new("src/lib.rs".to_string());
-        // Era A prompt entry covers lines 1-2
+        // Prompt-format entry covers lines 1-2
         file_att.add_entry(AttestationEntry::new(
             "prompthash001".to_string(),
             vec![LineRange::Range(1, 2)],
         ));
-        // Era B session entry covers lines 3-5
+        // Session-format entry covers lines 3-5
         file_att.add_entry(AttestationEntry::new(
             "s_bbb::t_001".to_string(),
             vec![LineRange::Range(3, 5)],
