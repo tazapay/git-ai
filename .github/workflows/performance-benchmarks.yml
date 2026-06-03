@@ -4,18 +4,6 @@ permissions:
   contents: read
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'Taskfile.yml'
-      - 'scripts/benchmarks/**'
-      - 'flake.nix'
-      - 'flake.lock'
-      - '.github/workflows/performance-benchmarks.yml'
   workflow_dispatch:
 
 jobs:
