@@ -40,9 +40,11 @@ const DEFAULT_IGNORE_PATTERNS: &[&str] = &[
     // OpenAPI / Swagger generated
     "*.swagger.json",
     // Generated mock directories
-    "**/mocks/gen/**",
+    "**/mocks/**",
     // Migration data files
-    "*.csv",
+    "**/migration/**/*.csv",
+    // Maizzle email template generated output
+    "**/email/maizzle/generated/**",
 ];
 
 #[derive(Clone, Debug)]
@@ -425,9 +427,11 @@ mod tests {
         // OpenAPI / Swagger
         assert!(defaults.contains(&"*.swagger.json".to_string()));
         // Generated mock directories
-        assert!(defaults.contains(&"**/mocks/gen/**".to_string()));
+        assert!(defaults.contains(&"**/mocks/**".to_string()));
         // Migration data files
-        assert!(defaults.contains(&"*.csv".to_string()));
+        assert!(defaults.contains(&"**/migration/**/*.csv".to_string()));
+        // Maizzle email template generated output
+        assert!(defaults.contains(&"**/email/maizzle/generated/**".to_string()));
     }
 
     #[test]
@@ -507,7 +511,7 @@ mod tests {
         // config.json is not a swagger file — must not be caught
         assert!(!should_ignore_file_with_matcher("config.json", &matcher));
 
-        // Generated mock directories
+        // Generated mock directories — **/mocks/** catches all depths
         assert!(should_ignore_file_with_matcher(
             "mocks/gen/mock_store.go",
             &matcher
@@ -516,19 +520,28 @@ mod tests {
             "service/mocks/gen/mock_repo.go",
             &matcher
         ));
-        // mocks/ without /gen/ must not be caught
-        assert!(!should_ignore_file_with_matcher(
+        assert!(should_ignore_file_with_matcher(
             "mocks/mock_store.go",
             &matcher
         ));
 
-        // Migration data files
-        assert!(should_ignore_file_with_matcher(
+        // Migration data files — only under a migration/ directory
+        assert!(!should_ignore_file_with_matcher(
             "missed-transactions.csv",
             &matcher
         ));
         assert!(should_ignore_file_with_matcher(
             "migration/6_scripts/up/missed-transactions.csv",
+            &matcher
+        ));
+
+        // Maizzle email template generated output
+        assert!(should_ignore_file_with_matcher(
+            "notification/service/sqs/email/maizzle/generated/welcome.html",
+            &matcher
+        ));
+        assert!(!should_ignore_file_with_matcher(
+            "email/maizzle/src/templates/welcome.html",
             &matcher
         ));
     }
